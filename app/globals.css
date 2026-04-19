@@ -1,0 +1,36 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body { @apply bg-bg text-gray-800; }
+}
+
+@layer components {
+  .btn       { @apply inline-flex items-center gap-1.5 px-4 py-2 rounded font-medium text-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap; }
+  .btn-primary   { @apply bg-primary text-white hover:bg-primary-light; }
+  .btn-success   { @apply bg-accent text-white hover:bg-green-700; }
+  .btn-danger    { @apply bg-danger text-white hover:bg-red-700; }
+  .btn-warning   { @apply bg-warn text-white hover:bg-orange-600; }
+  .btn-secondary { @apply bg-gray-500 text-white hover:bg-gray-600; }
+  .btn-outline   { @apply border border-primary text-primary hover:bg-primary hover:text-white; }
+  .btn-sm        { @apply px-2.5 py-1 text-xs; }
+
+  .card          { @apply bg-white rounded-lg shadow-sm p-6 mb-6; }
+  .card-title    { @apply text-base font-semibold text-primary mb-4 pb-3 border-b border-bg; }
+
+  .form-label    { @apply block text-sm font-medium text-gray-600 mb-1; }
+  .form-control  { @apply w-full px-3 py-2 border border-gray-300 rounded text-sm bg-white focus:outline-none focus:border-primary-light focus:ring-2 focus:ring-primary/10 transition-colors; }
+
+  .table-th      { @apply bg-primary text-white px-4 py-2.5 text-left text-sm font-medium whitespace-nowrap; }
+  .table-td      { @apply px-4 py-2.5 border-b border-gray-50 text-sm align-middle; }
+  .table-tr      { @apply hover:bg-gray-50/70 transition-colors; }
+
+  .badge         { @apply inline-block px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap; }
+
+  .alert         { @apply px-4 py-2.5 rounded text-sm mb-4 border-l-4; }
+  .alert-danger  { @apply bg-red-50 text-red-800 border-danger; }
+  .alert-success { @apply bg-green-50 text-green-800 border-accent; }
+  .alert-warning { @apply bg-yellow-50 text-yellow-800 border-warn; }
+  .alert-info    { @apply bg-blue-50 text-blue-800 border-blue-500; }
+}
