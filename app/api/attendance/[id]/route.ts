@@ -3,6 +3,22 @@ import { getUser } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 import { calcHoursAndDays } from '@/lib/utils';
 
+export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+  const user = await getUser(req);
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (user.role !== 'admin') return NextResponse.json({ error: 'Forbidden — admin only' }, { status: 403 });
+  const body = await req.json();
+  const { status } = body;
+  if (!['approved', 'rejected'].includes(status))
+    return NextResponse.json({ error: 'Status must be approved or rejected.' }, { status: 400 });
+  const { data, error } = await supabase.from('hr_attendance')
+    .update({ status })
+    .eq('id', params.id)
+    .select().single();
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json(data);
+}
+
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
   if (!await getUser(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const body = await req.json();

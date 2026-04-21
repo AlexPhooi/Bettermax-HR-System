@@ -2,14 +2,27 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState, useEffect, useRef } from 'react';
+import { useRole } from '@/lib/role-context';
 
-const NAV = [
+const ADMIN_NAV = [
   { href: '/',            label: 'Dashboard' },
   { href: '/projects',    label: 'Projects' },
   { href: '/employees',   label: 'Employees' },
   { href: '/attendance',  label: 'Attendance' },
   { href: '/salary',      label: 'Salary' },
   { href: '/advances',    label: 'Advances' },
+  { href: '/users',       label: 'Accounts' },
+];
+
+const LEADER_NAV = [
+  { href: '/attendance',  label: 'Attendance' },
+  { href: '/projects',    label: 'Projects' },
+];
+
+const WORKER_NAV = [
+  { href: '/my-attendance', label: 'My Attendance' },
+  { href: '/my-salary',     label: 'My Salary' },
+  { href: '/my-profile',    label: 'My Profile' },
 ];
 
 interface ExpiryItem { id: string; full_name: string; permit_expire: string; }
@@ -18,24 +31,32 @@ function daysDiff(dateStr: string) {
   return Math.floor((new Date(dateStr).getTime() - Date.now()) / 86400000);
 }
 
-export default function Navbar({ username }: { username: string }) {
+export default function Navbar() {
+  const { role, username, loaded } = useRole();
   const pathname = usePathname();
   const router   = useRouter();
   const [open, setOpen]         = useState(false);
   const [bellOpen, setBellOpen] = useState(false);
   const [expiring, setExpiring] = useState<ExpiryItem[]>([]);
   const [expired, setExpired]   = useState<ExpiryItem[]>([]);
+  const [pendingCount, setPendingCount] = useState(0);
   const bellRef = useRef<HTMLDivElement>(null);
 
+  const isAdmin  = role === 'admin';
+  const isWorker = role === 'worker';
+  const navLinks = isAdmin ? ADMIN_NAV : isWorker ? WORKER_NAV : LEADER_NAV;
+
   useEffect(() => {
+    if (!loaded || !isAdmin) return;
     fetch('/api/dashboard')
       .then(r => r.json())
       .then(d => {
         setExpiring(d.expiring_list || []);
         setExpired(d.expired_list || []);
+        setPendingCount(d.pending_count || 0);
       })
       .catch(() => {});
-  }, []);
+  }, [loaded, isAdmin]);
 
   // Close bell dropdown when clicking outside
   useEffect(() => {
@@ -62,104 +83,121 @@ export default function Navbar({ username }: { username: string }) {
     <>
       <nav className="bg-primary text-white sticky top-0 z-50 shadow-md">
         <div className="flex items-center h-14 px-4 md:px-6">
-          <Link href="/" className="font-bold text-base md:text-lg mr-6 whitespace-nowrap shrink-0">
-            🏢 Bettermax Enterprise
+          <Link href={isWorker ? '/my-attendance' : isAdmin ? '/' : '/attendance'}
+            className="font-bold text-base md:text-lg mr-6 whitespace-nowrap shrink-0">
+            🏢 Bettermax HR
           </Link>
           <ul className="hidden md:flex gap-0.5 flex-1">
-            {NAV.map(l => (
+            {navLinks.map(l => (
               <li key={l.href}>
                 <Link href={l.href}
-                  className={`px-3 py-1.5 rounded text-sm transition-colors block
+                  className={`px-3 py-1.5 rounded text-sm transition-colors block relative
                     ${isActive(l.href)
                       ? 'bg-white/20 text-white font-medium'
                       : 'text-white/80 hover:bg-white/15 hover:text-white'}`}>
                   {l.label}
+                  {/* Pending badge on Attendance for admin */}
+                  {isAdmin && l.href === '/attendance' && pendingCount > 0 && (
+                    <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full text-[10px] font-bold leading-4 text-center text-white bg-yellow-500">
+                      {pendingCount}
+                    </span>
+                  )}
                 </Link>
               </li>
             ))}
           </ul>
 
           <div className="ml-auto flex items-center gap-2">
-            {/* Permit Expiry Bell */}
-            <div className="relative" ref={bellRef}>
-              <button
-                onClick={() => setBellOpen(b => !b)}
-                className="relative p-1.5 rounded hover:bg-white/15 transition-colors"
-                title="Permit expiry alerts">
-                <span className="text-lg leading-none">🔔</span>
-                {totalAlerts > 0 && (
-                  <span className={`absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full text-[10px] font-bold leading-4 text-center text-white
-                    ${expired.length > 0 ? 'bg-red-500' : 'bg-orange-400'}`}>
-                    {totalAlerts}
-                  </span>
-                )}
-              </button>
+            {/* Role badge for non-admin */}
+            {loaded && !isAdmin && (
+              <span className={`hidden sm:inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold
+                ${role === 'leader' ? 'bg-blue-500/30 text-blue-100' : 'bg-green-500/30 text-green-100'}`}>
+                {role === 'leader' ? '👷 Leader' : '👤 Worker'}
+              </span>
+            )}
 
-              {bellOpen && (
-                <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-lg shadow-xl border border-gray-200 z-50 overflow-hidden">
-                  <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
-                    <p className="text-sm font-semibold text-gray-700">Permit Expiry Alerts</p>
-                  </div>
+            {/* Permit Expiry Bell — admin only */}
+            {isAdmin && (
+              <div className="relative" ref={bellRef}>
+                <button
+                  onClick={() => setBellOpen(b => !b)}
+                  className="relative p-1.5 rounded hover:bg-white/15 transition-colors"
+                  title="Permit expiry alerts">
+                  <span className="text-lg leading-none">🔔</span>
+                  {totalAlerts > 0 && (
+                    <span className={`absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full text-[10px] font-bold leading-4 text-center text-white
+                      ${expired.length > 0 ? 'bg-red-500' : 'bg-orange-400'}`}>
+                      {totalAlerts}
+                    </span>
+                  )}
+                </button>
 
-                  {totalAlerts === 0 ? (
-                    <div className="px-4 py-6 text-center text-gray-400 text-sm">
-                      ✅ All permits are valid
+                {bellOpen && (
+                  <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-lg shadow-xl border border-gray-200 z-50 overflow-hidden">
+                    <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+                      <p className="text-sm font-semibold text-gray-700">Permit Expiry Alerts</p>
                     </div>
-                  ) : (
-                    <div className="max-h-80 overflow-y-auto divide-y divide-gray-100">
-                      {expired.length > 0 && (
-                        <>
-                          <div className="px-4 py-1.5 bg-red-50 text-xs font-semibold text-red-600 uppercase tracking-wider">
-                            ❌ Expired
-                          </div>
-                          {expired.map(e => (
-                            <div key={e.id} className="px-4 py-2.5 flex items-center justify-between hover:bg-gray-50">
-                              <div>
-                                <p className="text-sm font-medium text-gray-800">{e.full_name}</p>
-                                <p className="text-xs text-red-500">Expired {Math.abs(daysDiff(e.permit_expire))} days ago</p>
-                              </div>
-                              <span className="text-xs text-gray-400 shrink-0 ml-2">
-                                {new Date(e.permit_expire).toLocaleDateString('en-GB')}
-                              </span>
+
+                    {totalAlerts === 0 ? (
+                      <div className="px-4 py-6 text-center text-gray-400 text-sm">
+                        ✅ All permits are valid
+                      </div>
+                    ) : (
+                      <div className="max-h-80 overflow-y-auto divide-y divide-gray-100">
+                        {expired.length > 0 && (
+                          <>
+                            <div className="px-4 py-1.5 bg-red-50 text-xs font-semibold text-red-600 uppercase tracking-wider">
+                              ❌ Expired
                             </div>
-                          ))}
-                        </>
-                      )}
-                      {expiring.length > 0 && (
-                        <>
-                          <div className="px-4 py-1.5 bg-orange-50 text-xs font-semibold text-orange-600 uppercase tracking-wider">
-                            ⚠️ Expiring Soon
-                          </div>
-                          {expiring.map(e => {
-                            const d = daysDiff(e.permit_expire);
-                            return (
+                            {expired.map(e => (
                               <div key={e.id} className="px-4 py-2.5 flex items-center justify-between hover:bg-gray-50">
                                 <div>
                                   <p className="text-sm font-medium text-gray-800">{e.full_name}</p>
-                                  <p className={`text-xs ${d <= 14 ? 'text-red-500' : 'text-orange-500'}`}>
-                                    {d === 0 ? 'Expires today' : `${d} day${d !== 1 ? 's' : ''} left`}
-                                  </p>
+                                  <p className="text-xs text-red-500">Expired {Math.abs(daysDiff(e.permit_expire))} days ago</p>
                                 </div>
                                 <span className="text-xs text-gray-400 shrink-0 ml-2">
                                   {new Date(e.permit_expire).toLocaleDateString('en-GB')}
                                 </span>
                               </div>
-                            );
-                          })}
-                        </>
-                      )}
-                    </div>
-                  )}
+                            ))}
+                          </>
+                        )}
+                        {expiring.length > 0 && (
+                          <>
+                            <div className="px-4 py-1.5 bg-orange-50 text-xs font-semibold text-orange-600 uppercase tracking-wider">
+                              ⚠️ Expiring Soon
+                            </div>
+                            {expiring.map(e => {
+                              const d = daysDiff(e.permit_expire);
+                              return (
+                                <div key={e.id} className="px-4 py-2.5 flex items-center justify-between hover:bg-gray-50">
+                                  <div>
+                                    <p className="text-sm font-medium text-gray-800">{e.full_name}</p>
+                                    <p className={`text-xs ${d <= 14 ? 'text-red-500' : 'text-orange-500'}`}>
+                                      {d === 0 ? 'Expires today' : `${d} day${d !== 1 ? 's' : ''} left`}
+                                    </p>
+                                  </div>
+                                  <span className="text-xs text-gray-400 shrink-0 ml-2">
+                                    {new Date(e.permit_expire).toLocaleDateString('en-GB')}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </>
+                        )}
+                      </div>
+                    )}
 
-                  <div className="px-4 py-2.5 border-t border-gray-200 bg-gray-50">
-                    <Link href="/employees" onClick={() => setBellOpen(false)}
-                      className="text-xs text-blue-600 hover:underline">
-                      View all employees →
-                    </Link>
+                    <div className="px-4 py-2.5 border-t border-gray-200 bg-gray-50">
+                      <Link href="/employees" onClick={() => setBellOpen(false)}
+                        className="text-xs text-blue-600 hover:underline">
+                        View all employees →
+                      </Link>
+                    </div>
                   </div>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
+            )}
 
             {username && (
               <span className="hidden sm:block text-white/60 text-xs">{username}</span>
@@ -177,11 +215,16 @@ export default function Navbar({ username }: { username: string }) {
       </nav>
       {open && (
         <div className="md:hidden bg-primary-light shadow-lg z-40">
-          {NAV.map(l => (
+          {navLinks.map(l => (
             <Link key={l.href} href={l.href} onClick={() => setOpen(false)}
-              className={`block px-6 py-3 text-sm border-b border-white/10 transition-colors
+              className={`block px-6 py-3 text-sm border-b border-white/10 transition-colors relative
                 ${isActive(l.href) ? 'text-white bg-white/15 font-medium' : 'text-white/85 hover:bg-white/10'}`}>
               {l.label}
+              {isAdmin && l.href === '/attendance' && pendingCount > 0 && (
+                <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-bold bg-yellow-500 text-white">
+                  {pendingCount}
+                </span>
+              )}
             </Link>
           ))}
         </div>

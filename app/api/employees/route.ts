@@ -3,7 +3,17 @@ import { getUser } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 
 export async function GET(req: NextRequest) {
-  if (!await getUser(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const user = await getUser(req);
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  // Workers can only see their own employee record
+  if (user.role === 'worker') {
+    if (!user.employee_id) return NextResponse.json([]);
+    const { data, error } = await supabase.from('employees').select('*').eq('id', user.employee_id).single();
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json([data]);
+  }
+
   const { searchParams } = req.nextUrl;
   let query = supabase.from('employees').select('*').order('full_name');
   const search = searchParams.get('search');

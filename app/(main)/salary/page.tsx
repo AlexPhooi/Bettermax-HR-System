@@ -7,6 +7,8 @@ interface SalaryRow {
   full_name: string;
   total_days: number;
   daily_rate: number;
+  base_salary: number;
+  total_site_bonus: number;
   gross_salary: number;
   total_advances: number;
   net_salary: number;
@@ -20,14 +22,14 @@ interface SalaryResult {
 }
 
 export default function SalaryPage() {
-  const [month, setMonth]               = useState(getCurrentMonth());
-  const [result, setResult]             = useState<SalaryResult | null>(null);
-  const [loading, setLoading]           = useState(false);
-  const [calculated, setCalculated]     = useState(false);
-  const [isFinalized, setIsFinalized]   = useState(false);
-  const [alertMsg, setAlertMsg]         = useState('');
-  const [alertType, setAlertType]       = useState<'success' | 'danger' | 'warning'>('success');
-  const [finalizing, setFinalizing]     = useState(false);
+  const [month, setMonth]             = useState(getCurrentMonth());
+  const [result, setResult]           = useState<SalaryResult | null>(null);
+  const [loading, setLoading]         = useState(false);
+  const [calculated, setCalculated]   = useState(false);
+  const [isFinalized, setIsFinalized] = useState(false);
+  const [alertMsg, setAlertMsg]       = useState('');
+  const [alertType, setAlertType]     = useState<'success' | 'danger' | 'warning'>('success');
+  const [finalizing, setFinalizing]   = useState(false);
 
   function showAlert(msg: string, type: 'success' | 'danger' | 'warning' = 'success') {
     setAlertMsg(msg); setAlertType(type);
@@ -43,7 +45,6 @@ export default function SalaryPage() {
       setResult(data);
       setCalculated(true);
 
-      // Check if already finalized
       const recRes = await fetch(`/api/salary/records?month=${month}`);
       const recData = await recRes.json();
       if (Array.isArray(recData) && recData.length > 0) setIsFinalized(true);
@@ -68,11 +69,15 @@ export default function SalaryPage() {
   }
 
   const totals = result ? {
-    total_days:      result.data.reduce((s, r) => s + r.total_days,    0),
-    gross_salary:    result.data.reduce((s, r) => s + r.gross_salary,  0),
-    total_advances:  result.data.reduce((s, r) => s + r.total_advances,0),
-    net_salary:      result.data.reduce((s, r) => s + r.net_salary,    0),
+    total_days:       result.data.reduce((s, r) => s + r.total_days,       0),
+    base_salary:      result.data.reduce((s, r) => s + r.base_salary,      0),
+    total_site_bonus: result.data.reduce((s, r) => s + r.total_site_bonus, 0),
+    gross_salary:     result.data.reduce((s, r) => s + r.gross_salary,     0),
+    total_advances:   result.data.reduce((s, r) => s + r.total_advances,   0),
+    net_salary:       result.data.reduce((s, r) => s + r.net_salary,       0),
   } : null;
+
+  const hasSiteBonus = result?.data.some(r => r.total_site_bonus > 0);
 
   return (
     <div className="p-4 md:p-6 max-w-7xl mx-auto">
@@ -95,7 +100,6 @@ export default function SalaryPage() {
 
       {alertMsg && <div className={`alert alert-${alertType}`}>{alertMsg}</div>}
 
-      {/* Month selector */}
       <div className="card p-4 mb-4">
         <div className="flex items-end gap-3 flex-wrap">
           <div>
@@ -107,9 +111,9 @@ export default function SalaryPage() {
             {loading ? 'Calculating…' : '⚡ Calculate'}
           </button>
         </div>
+        <p className="text-xs text-gray-400 mt-2">⚠️ Only <strong>approved</strong> attendance records are included in salary calculation.</p>
       </div>
 
-      {/* Payment due info */}
       {result && (
         <div className="alert alert-warning mb-4">
           <strong>Payment Due:</strong> {formatDate(result.payment_due)} (7th of following month)
@@ -117,7 +121,6 @@ export default function SalaryPage() {
         </div>
       )}
 
-      {/* Loading skeleton */}
       {loading && (
         <div className="card animate-pulse">
           <div className="space-y-3">
@@ -128,21 +131,25 @@ export default function SalaryPage() {
         </div>
       )}
 
-      {/* Results table */}
       {result && !loading && (
         <div className="card p-0 overflow-hidden">
           <div className="px-6 py-4 border-b border-bg flex items-center justify-between">
             <span className="text-sm font-semibold text-primary">
               {result.data.length} employee{result.data.length !== 1 ? 's' : ''} — {result.month}
             </span>
+            {hasSiteBonus && (
+              <span className="badge bg-green-100 text-green-700 text-xs">🧹 Site Bonus included</span>
+            )}
           </div>
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
                 <tr>
                   <th className="table-th">Employee</th>
-                  <th className="table-th text-right">Days Worked</th>
-                  <th className="table-th text-right">Daily Rate</th>
+                  <th className="table-th text-right">Days</th>
+                  <th className="table-th text-right">Rate</th>
+                  <th className="table-th text-right">Base Pay</th>
+                  <th className="table-th text-right">🧹 Site Bonus</th>
                   <th className="table-th text-right">Gross</th>
                   <th className="table-th text-right">Advances</th>
                   <th className="table-th text-right">Net Salary</th>
@@ -154,10 +161,16 @@ export default function SalaryPage() {
                     <td className="table-td font-medium">{row.full_name}</td>
                     <td className="table-td text-right">
                       <span className="text-gray-500 text-xs mr-1">({row.attendance_days}d /</span>
-                      <span className="font-semibold">{row.total_days.toFixed(4)} units</span>
+                      <span className="font-semibold">{row.total_days.toFixed(4)}</span>
                       <span className="text-gray-500 text-xs">)</span>
                     </td>
                     <td className="table-td text-right">{formatRM(row.daily_rate)}</td>
+                    <td className="table-td text-right">{formatRM(row.base_salary)}</td>
+                    <td className="table-td text-right">
+                      {row.total_site_bonus > 0
+                        ? <span className="text-green-600 font-semibold">+{formatRM(row.total_site_bonus)}</span>
+                        : <span className="text-gray-400">-</span>}
+                    </td>
                     <td className="table-td text-right text-accent font-semibold">{formatRM(row.gross_salary)}</td>
                     <td className="table-td text-right">
                       {row.total_advances > 0
@@ -174,8 +187,12 @@ export default function SalaryPage() {
                 <tfoot>
                   <tr className="bg-primary/5 font-bold">
                     <td className="table-td">TOTAL</td>
-                    <td className="table-td text-right">{totals.total_days.toFixed(4)} units</td>
+                    <td className="table-td text-right">{totals.total_days.toFixed(4)}</td>
                     <td className="table-td" />
+                    <td className="table-td text-right">{formatRM(totals.base_salary)}</td>
+                    <td className="table-td text-right text-green-600">
+                      {totals.total_site_bonus > 0 ? `+${formatRM(totals.total_site_bonus)}` : '-'}
+                    </td>
                     <td className="table-td text-right text-accent">{formatRM(totals.gross_salary)}</td>
                     <td className="table-td text-right text-danger">
                       {totals.total_advances > 0 ? `(${formatRM(totals.total_advances)})` : '-'}

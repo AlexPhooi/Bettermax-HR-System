@@ -1,20 +1,11 @@
-import { cookies } from 'next/headers';
-import { verifyToken } from '@/lib/auth';
 import Navbar from '@/components/Navbar';
+import { RoleProvider } from '@/lib/role-context';
 
-export default async function MainLayout({ children }: { children: React.ReactNode }) {
-  const token = cookies().get('token')?.value;
-  let username = '';
-  if (token) {
-    try {
-      const p = await verifyToken(token);
-      username = p.username as string;
-    } catch {}
-  }
+export default function MainLayout({ children }: { children: React.ReactNode }) {
   return (
-    <>
-      <Navbar username={username} />
+    <RoleProvider>
+      <Navbar />
       <main className="min-h-screen bg-bg">{children}</main>
-    </>
+    </RoleProvider>
   );
 }

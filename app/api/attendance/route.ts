@@ -4,26 +4,43 @@ import { supabase } from '@/lib/supabase';
 import { calcHoursAndDays } from '@/lib/utils';
 
 export async function GET(req: NextRequest) {
-  if (!await getUser(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const user = await getUser(req);
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
   const sp = req.nextUrl.searchParams;
   let query = supabase.from('hr_attendance')
     .select('*, employees(full_name, daily_rate), projects(name, code)')
     .order('work_date', { ascending: false });
+
+  const date  = sp.get('date');
   const month = sp.get('month');
-  if (month) {
+  if (date) {
+    query = query.eq('work_date', date);
+  } else if (month) {
     const [y, m] = month.split('-');
     query = query.gte('work_date', `${month}-01`)
       .lte('work_date', new Date(+y, +m, 0).toISOString().split('T')[0]);
   }
-  if (sp.get('employee_id')) query = query.eq('employee_id', sp.get('employee_id')!);
-  if (sp.get('project_id'))  query = query.eq('project_id',  sp.get('project_id')!);
+
+  // Workers can only see their own records
+  if (user.role === 'worker') {
+    if (!user.employee_id) return NextResponse.json([]);
+    query = query.eq('employee_id', user.employee_id);
+  } else {
+    if (sp.get('employee_id')) query = query.eq('employee_id', sp.get('employee_id')!);
+    if (sp.get('project_id'))  query = query.eq('project_id',  sp.get('project_id')!);
+  }
+
   const { data, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(data);
 }
 
 export async function POST(req: NextRequest) {
-  if (!await getUser(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const user = await getUser(req);
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (user.role === 'worker') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+
   const body = await req.json();
   const ids: string[] = body.employee_ids?.length ? body.employee_ids : (body.employee_id ? [body.employee_id] : []);
   if (!ids.length) return NextResponse.json({ error: 'At least one employee is required.' }, { status: 400 });
@@ -45,6 +62,10 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Calculate site bonus: RM10 if site_clean AND hours >= 8
+  const site_clean = body.site_clean === true;
+  const site_bonus = (site_clean && calc.hours >= 8) ? 10.00 : 0;
+
   const inserted: unknown[] = [], skipped: string[] = [];
   for (const employee_id of ids) {
     const { data, error } = await supabase.from('hr_attendance').insert({
@@ -53,6 +74,10 @@ export async function POST(req: NextRequest) {
       hours_worked: calc.hours, days_worked: calc.days,
       notes: body.notes?.trim() || null,
       is_rework,
+      status: 'pending',
+      submitted_by: user.id,
+      site_clean,
+      site_bonus,
     }).select().single();
     if (error) {
       if (error.code === '23505') skipped.push(employee_id);

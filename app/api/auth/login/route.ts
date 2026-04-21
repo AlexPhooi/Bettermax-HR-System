@@ -13,8 +13,8 @@ export async function POST(req: NextRequest) {
   if (!user || !(await bcrypt.compare(password, user.password_hash)))
     return NextResponse.json({ error: 'Invalid username or password.' }, { status: 401 });
 
-  const token = await signToken({ id: user.id, username: user.username, role: user.role });
-  const res = NextResponse.json({ success: true, user: { username: user.username, role: user.role } });
+  const token = await signToken({ id: user.id, username: user.username, role: user.role, employee_id: user.employee_id || null });
+  const res = NextResponse.json({ success: true, user: { username: user.username, role: user.role, employee_id: user.employee_id || null } });
   res.cookies.set('token', token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
