@@ -30,3 +30,9 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
 }
 
 export function useRole() { return useContext(RoleContext); }
+
+/** True for owner or admin — can access management features */
+export function useIsManager() {
+  const { role } = useContext(RoleContext);
+  return role === 'owner' || role === 'admin';
+}

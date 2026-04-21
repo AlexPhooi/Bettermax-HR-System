@@ -6,7 +6,7 @@ import { calcHoursAndDays } from '@/lib/utils';
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const user = await getUser(req);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (user.role !== 'admin') return NextResponse.json({ error: 'Forbidden — admin only' }, { status: 403 });
+  if (user.role !== 'admin' && user.role !== 'owner') return NextResponse.json({ error: 'Forbidden — admin/owner only' }, { status: 403 });
   const body = await req.json();
   const { status } = body;
   if (!['approved', 'rejected'].includes(status))

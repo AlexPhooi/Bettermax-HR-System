@@ -51,8 +51,8 @@ function StatusBadge({ status }: { status: string }) {
 
 export default function AttendancePage() {
   const { role } = useRole();
-  const isAdmin  = role === 'admin';
-  const canSubmit = role === 'admin' || role === 'leader';
+  const isAdmin  = role === 'admin' || role === 'owner';
+  const canSubmit = role === 'admin' || role === 'owner' || role === 'leader';
 
   const [records, setRecords]     = useState<AttRecord[]>([]);
   const [empList, setEmpList]     = useState<Employee[]>([]);

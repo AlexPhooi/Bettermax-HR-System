@@ -13,6 +13,10 @@ export async function POST(req: NextRequest) {
   if (!user || !(await bcrypt.compare(password, user.password_hash)))
     return NextResponse.json({ error: 'Invalid username or password.' }, { status: 401 });
 
+  // Block deactivated accounts
+  if (user.active === false)
+    return NextResponse.json({ error: 'Your account has been deactivated. Please contact your manager.' }, { status: 403 });
+
   const token = await signToken({ id: user.id, username: user.username, role: user.role, employee_id: user.employee_id || null });
   const res = NextResponse.json({ success: true, user: { username: user.username, role: user.role, employee_id: user.employee_id || null } });
   res.cookies.set('token', token, {

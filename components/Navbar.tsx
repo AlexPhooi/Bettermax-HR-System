@@ -5,13 +5,12 @@ import { useState, useEffect, useRef } from 'react';
 import { useRole } from '@/lib/role-context';
 
 const ADMIN_NAV = [
-  { href: '/',            label: 'Dashboard' },
-  { href: '/projects',    label: 'Projects' },
-  { href: '/employees',   label: 'Employees' },
-  { href: '/attendance',  label: 'Attendance' },
-  { href: '/salary',      label: 'Salary' },
-  { href: '/advances',    label: 'Advances' },
-  { href: '/users',       label: 'Accounts' },
+  { href: '/',           label: 'Dashboard' },
+  { href: '/projects',   label: 'Projects' },
+  { href: '/staff',      label: 'Staff' },
+  { href: '/attendance', label: 'Attendance' },
+  { href: '/salary',     label: 'Salary' },
+  { href: '/advances',   label: 'Advances' },
 ];
 
 const LEADER_NAV = [

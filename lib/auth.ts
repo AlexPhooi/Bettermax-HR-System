@@ -7,8 +7,13 @@ const secret = new TextEncoder().encode(process.env.JWT_SECRET);
 export interface UserPayload {
   id: string;
   username: string;
-  role: string;
+  role: 'owner' | 'admin' | 'leader' | 'worker' | string;
   employee_id?: string | null;
+}
+
+/** True for roles with full management access */
+export function isManager(role: string) {
+  return role === 'owner' || role === 'admin';
 }
 
 export async function signToken(payload: UserPayload) {

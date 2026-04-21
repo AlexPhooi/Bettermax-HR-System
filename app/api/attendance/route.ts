@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const user = await getUser(req);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (user.role === 'worker') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  if (user.role === 'worker') return NextResponse.json({ error: 'Forbidden — workers cannot record attendance.' }, { status: 403 });
 
   const body = await req.json();
   const ids: string[] = body.employee_ids?.length ? body.employee_ids : (body.employee_id ? [body.employee_id] : []);

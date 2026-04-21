@@ -25,7 +25,7 @@ const ADMIN_QUICK = [
 
 export default function DashboardPage() {
   const { role } = useRole();
-  const isAdmin = role === 'admin';
+  const isAdmin = role === 'admin' || role === 'owner';
 
   const [data, setData] = useState<DashData | null>(null);
 
