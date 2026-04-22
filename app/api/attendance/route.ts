@@ -10,6 +10,7 @@ export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   let query = supabase.from('hr_attendance')
     .select('*, employees(full_name, daily_rate), projects(name, code)')
+    .is('deleted_at', null)
     .order('work_date', { ascending: false });
 
   // Date / month filter

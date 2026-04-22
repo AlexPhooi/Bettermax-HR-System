@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getUser, isManager } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 
-// Full update (admin/owner only)
+// Full update — admin/owner only
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
   const user = await getUser(req);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -30,22 +30,18 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   return NextResponse.json(data);
 }
 
-// Self-update (worker / leader can update own limited fields)
+// Self-update — worker/leader can update own limited fields
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const user = await getUser(req);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  // Non-managers can only edit their own record
-  if (!isManager(user.role) && user.employee_id !== params.id) {
+  if (!isManager(user.role) && user.employee_id !== params.id)
     return NextResponse.json({ error: 'Forbidden.' }, { status: 403 });
-  }
 
   const body = await req.json();
-
-  // Workers/leaders may only update limited personal fields
   const allowed: Record<string, unknown> = {};
-  if (body.phone        !== undefined) allowed.phone        = body.phone?.trim() || null;
-  if (body.bank_name    !== undefined) allowed.bank_name    = body.bank_name     || null;
+  if (body.phone        !== undefined) allowed.phone        = body.phone?.trim()        || null;
+  if (body.bank_name    !== undefined) allowed.bank_name    = body.bank_name            || null;
   if (body.bank_account !== undefined) allowed.bank_account = body.bank_account?.trim() || null;
   if (body.avatar_url   !== undefined) allowed.avatar_url   = body.avatar_url?.trim()   || null;
 
@@ -55,4 +51,17 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const { data, error } = await supabase.from('employees').update(allowed).eq('id', params.id).select().single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(data);
+}
+
+// Soft-delete — standalone employee (no user account)
+export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+  const user = await getUser(req);
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!isManager(user.role)) return NextResponse.json({ error: 'Admin/Owner only.' }, { status: 403 });
+
+  const { error } = await supabase.from('employees')
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('id', params.id);
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ success: true });
 }

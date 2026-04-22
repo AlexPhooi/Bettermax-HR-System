@@ -3,7 +3,7 @@ import { getUser, isManager } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 import { calcHoursAndDays } from '@/lib/utils';
 
-// PATCH: approve / reject single record (admin only)
+// PATCH: approve / reject (admin only) — also supports hours edit
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const user = await getUser(req);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -31,28 +31,23 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     if (effectiveHours !== undefined) {
       update.site_bonus = Boolean(site_clean) && effectiveHours >= 8 ? 10 : 0;
     } else {
-      // Fetch current hours to decide bonus
       const { data: rec } = await supabase.from('hr_attendance').select('hours_worked').eq('id', params.id).single();
       update.site_bonus = Boolean(site_clean) && Number(rec?.hours_worked) >= 8 ? 10 : 0;
     }
   }
 
   const { data, error } = await supabase.from('hr_attendance')
-    .update(update)
-    .eq('id', params.id)
-    .select().single();
+    .update(update).eq('id', params.id).select().single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(data);
 }
 
-// PUT: edit a record (admin or the submitting leader)
+// PUT: edit a record
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
   const user = await getUser(req);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const body = await req.json();
-
-  // Support work_hours-based OR clock_in/clock_out-based editing
   let hours_worked: number | undefined;
   let days_worked: number | undefined;
   let ot_hours: number | undefined;
@@ -66,21 +61,16 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   } else if (body.clock_in && body.clock_out && body.work_date) {
     const calc = calcHoursAndDays(body.work_date, body.clock_in, body.clock_out);
     if (!calc) return NextResponse.json({ error: 'Clock out must be after clock in.' }, { status: 400 });
-    hours_worked = calc.hours;
-    days_worked  = calc.days;
-    clock_in     = calc.clock_in;
-    clock_out    = calc.clock_out;
+    hours_worked = calc.hours; days_worked = calc.days; clock_in = calc.clock_in; clock_out = calc.clock_out;
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const update: Record<string, any> = {
-    employee_id: body.employee_id,
-    project_id:  body.project_id || null,
-    work_date:   body.work_date,
-    notes:       body.notes?.trim() || null,
+    employee_id: body.employee_id, project_id: body.project_id || null,
+    work_date: body.work_date, notes: body.notes?.trim() || null,
   };
   if (hours_worked !== undefined) { update.hours_worked = hours_worked; update.days_worked = days_worked; }
-  if (ot_hours     !== undefined) update.ot_hours = ot_hours;
+  if (ot_hours !== undefined)     update.ot_hours = ot_hours;
   if (clock_in)  update.clock_in  = clock_in;
   if (clock_out) update.clock_out = clock_out;
 
@@ -89,10 +79,15 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   return NextResponse.json(data);
 }
 
-// DELETE: remove record
+// DELETE: soft-delete — sends record to Bin
 export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
-  if (!await getUser(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  const { error } = await supabase.from('hr_attendance').delete().eq('id', params.id);
+  const user = await getUser(req);
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!isManager(user.role)) return NextResponse.json({ error: 'Admin/Owner only.' }, { status: 403 });
+
+  const { error } = await supabase.from('hr_attendance')
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('id', params.id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ success: true });
 }

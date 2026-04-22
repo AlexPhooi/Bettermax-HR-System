@@ -7,15 +7,18 @@ export async function GET(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   // Workers can only see their own employee record
-  if (user.role === 'worker') {
+  if (user.role === 'worker' || user.role === 'leader') {
     if (!user.employee_id) return NextResponse.json([]);
-    const { data, error } = await supabase.from('employees').select('*').eq('id', user.employee_id).single();
+    const { data, error } = await supabase.from('employees')
+      .select('*').eq('id', user.employee_id).is('deleted_at', null).single();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json([data]);
+    return NextResponse.json(data ? [data] : []);
   }
 
   const { searchParams } = req.nextUrl;
-  let query = supabase.from('employees').select('*').order('full_name');
+  let query = supabase.from('employees').select('*')
+    .is('deleted_at', null)   // ← exclude soft-deleted
+    .order('full_name');
   const search = searchParams.get('search');
   const status = searchParams.get('status');
   if (search) query = query.ilike('full_name', `%${search}%`);
@@ -32,15 +35,15 @@ export async function POST(req: NextRequest) {
   if (!body.daily_rate || Number(body.daily_rate) <= 0)
     return NextResponse.json({ error: 'Valid daily rate is required.' }, { status: 400 });
   const { data, error } = await supabase.from('employees').insert({
-    full_name: body.full_name.trim(),
-    passport_no: body.passport_no?.trim() || null,
-    permit_no: body.permit_no?.trim() || null,
-    permit_expire: body.permit_expire || null,
-    phone: body.phone?.trim() || null,
-    daily_rate: Number(body.daily_rate),
-    rank: body.rank || null,
-    bank_name: body.bank_name || null,
-    bank_account: body.bank_account?.trim() || null,
+    full_name:       body.full_name.trim(),
+    passport_no:     body.passport_no?.trim()  || null,
+    permit_no:       body.permit_no?.trim()    || null,
+    permit_expire:   body.permit_expire        || null,
+    phone:           body.phone?.trim()        || null,
+    daily_rate:      Number(body.daily_rate),
+    rank:            body.rank                 || null,
+    bank_name:       body.bank_name            || null,
+    bank_account:    body.bank_account?.trim() || null,
     passport_doc_url: body.passport_doc_url?.trim() || null,
     permit_doc_url:   body.permit_doc_url?.trim()   || null,
     status: 'active',

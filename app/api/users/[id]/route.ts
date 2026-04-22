@@ -19,7 +19,6 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (body.role !== undefined) {
     const validRoles = ['owner', 'admin', 'leader', 'worker'];
     if (!validRoles.includes(body.role)) return NextResponse.json({ error: 'Invalid role.' }, { status: 400 });
-    // Only owner can assign owner/admin roles
     if ((body.role === 'owner' || body.role === 'admin') && user.role !== 'owner')
       return NextResponse.json({ error: 'Only the owner can assign owner or admin roles.' }, { status: 403 });
     updates.role = body.role;
@@ -40,8 +39,34 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
   const user = await getUser(req);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!isManager(user.role)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  if (user.id === params.id) return NextResponse.json({ error: 'Cannot delete your own account.' }, { status: 400 });
-  const { error } = await supabase.from('users').delete().eq('id', params.id);
+
+  // Cannot delete self
+  if (user.id === params.id)
+    return NextResponse.json({ error: 'You cannot delete your own account.' }, { status: 400 });
+
+  // Fetch target to check role + linked employee
+  const { data: target } = await supabase.from('users')
+    .select('role, employee_id').eq('id', params.id).single();
+  if (!target) return NextResponse.json({ error: 'User not found.' }, { status: 404 });
+
+  // Admin cannot delete Admin or Owner accounts
+  if (user.role === 'admin' && (target.role === 'admin' || target.role === 'owner'))
+    return NextResponse.json({ error: 'Admin cannot delete Admin or Owner accounts.' }, { status: 403 });
+
+  // Owner cannot delete other Owner accounts
+  if (user.role === 'owner' && target.role === 'owner')
+    return NextResponse.json({ error: 'Owner accounts cannot be deleted.' }, { status: 403 });
+
+  const now = new Date().toISOString();
+
+  // Soft-delete the user
+  const { error } = await supabase.from('users').update({ deleted_at: now }).eq('id', params.id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // Soft-delete the linked employee record (if any)
+  if (target.employee_id) {
+    await supabase.from('employees').update({ deleted_at: now }).eq('id', target.employee_id);
+  }
+
   return NextResponse.json({ success: true });
 }
