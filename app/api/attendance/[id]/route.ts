@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getUser, isManager } from '@/lib/auth';
+import { getUser, isManager, isApprover } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 import { calcHoursAndDays } from '@/lib/utils';
 
-// PATCH: approve / reject (admin only) — also supports hours edit
+// PATCH: approve / reject (admin/approval/owner) — also supports hours edit
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const user = await getUser(req);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (!isManager(user.role)) return NextResponse.json({ error: 'Admin/Owner only.' }, { status: 403 });
+  if (!isApprover(user.role)) return NextResponse.json({ error: 'Approver/Admin/Owner only.' }, { status: 403 });
 
   const body = await req.json();
   const { status, site_clean, work_hours, ot_hours } = body;

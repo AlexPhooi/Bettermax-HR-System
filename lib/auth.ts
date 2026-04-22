@@ -7,13 +7,18 @@ const secret = new TextEncoder().encode(process.env.JWT_SECRET);
 export interface UserPayload {
   id: string;
   username: string;
-  role: 'owner' | 'admin' | 'leader' | 'worker' | string;
+  role: 'owner' | 'admin' | 'approval' | 'editor' | 'viewer' | string;
   employee_id?: string | null;
 }
 
-/** True for roles with full management access */
+/** True for roles with full management access (staff / salary / settings) */
 export function isManager(role: string) {
   return role === 'owner' || role === 'admin';
+}
+
+/** True for roles that can approve / reject attendance */
+export function isApprover(role: string) {
+  return role === 'owner' || role === 'admin' || role === 'approval';
 }
 
 export async function signToken(payload: UserPayload) {

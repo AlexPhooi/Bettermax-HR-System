@@ -29,12 +29,12 @@ export async function GET(req: NextRequest) {
   if (statusFilter) query = query.eq('status', statusFilter);
 
   // Role-based visibility
-  if (user.role === 'worker') {
-    // Workers see only their own records
+  if (user.role === 'viewer') {
+    // Viewers see only their own records
     if (!user.employee_id) return NextResponse.json([]);
     query = query.eq('employee_id', user.employee_id);
 
-  } else if (user.role === 'leader') {
+  } else if (user.role === 'editor') {
     const mode = sp.get('mode');
     if (mode === 'personal' && user.employee_id) {
       // Leader's own attendance records (for My History tab)
@@ -57,7 +57,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const user = await getUser(req);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (user.role === 'worker') return NextResponse.json({ error: 'Forbidden.' }, { status: 403 });
+  if (user.role === 'viewer') return NextResponse.json({ error: 'Forbidden.' }, { status: 403 });
 
   const body = await req.json();
   const ids: string[] = body.employee_ids?.length ? body.employee_ids : (body.employee_id ? [body.employee_id] : []);

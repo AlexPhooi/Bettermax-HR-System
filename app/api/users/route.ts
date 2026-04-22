@@ -26,11 +26,11 @@ export async function POST(req: NextRequest) {
   if (!body.username?.trim()) return NextResponse.json({ error: 'Username is required.' }, { status: 400 });
   if (!body.password || body.password.length < 6) return NextResponse.json({ error: 'Password must be at least 6 characters.' }, { status: 400 });
 
-  const validRoles = ['owner', 'admin', 'leader', 'worker'];
+  const validRoles = ['owner', 'admin', 'approval', 'editor', 'viewer'];
   if (!validRoles.includes(body.role)) return NextResponse.json({ error: 'Invalid role.' }, { status: 400 });
 
   // Only owner can create owner/admin accounts
-  if ((body.role === 'owner' || body.role === 'admin') && user.role !== 'owner')
+  if ((body.role === 'owner' || body.role === 'admin' || body.role === 'approval') && user.role !== 'owner' && user.role !== 'admin')
     return NextResponse.json({ error: 'Only the owner can create owner or admin accounts.' }, { status: 403 });
 
   const password_hash = await bcrypt.hash(body.password, 10);

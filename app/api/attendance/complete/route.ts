@@ -7,7 +7,7 @@ import { supabase } from '@/lib/supabase';
 export async function PATCH(req: NextRequest) {
   const user = await getUser(req);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (user.role === 'worker') return NextResponse.json({ error: 'Forbidden.' }, { status: 403 });
+  if (user.role === 'viewer') return NextResponse.json({ error: 'Forbidden.' }, { status: 403 });
 
   const body = await req.json();
   const { project_id, work_date, work_hours, ot_hours = 0 } = body;

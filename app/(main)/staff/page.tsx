@@ -66,10 +66,11 @@ const BANKS = [
 ];
 
 const ROLE_CFG: Record<string, { label: string; color: string; icon: string }> = {
-  owner:  { label: 'Owner',  color: 'bg-red-100 text-red-700',    icon: '👑' },
-  admin:  { label: 'Admin',  color: 'bg-purple-100 text-purple-700', icon: '🔑' },
-  leader: { label: 'Leader', color: 'bg-blue-100 text-blue-700',   icon: '👷' },
-  worker: { label: 'Worker', color: 'bg-green-100 text-green-700', icon: '👤' },
+  owner:    { label: 'Owner',    color: 'bg-red-100 text-red-700',      icon: '👑' },
+  admin:    { label: 'Admin',    color: 'bg-purple-100 text-purple-700', icon: '🔑' },
+  approval: { label: 'Approval', color: 'bg-orange-100 text-orange-700', icon: '✅' },
+  editor:   { label: 'Editor',   color: 'bg-blue-100 text-blue-700',    icon: '✏️' },
+  viewer:   { label: 'Viewer',   color: 'bg-green-100 text-green-700',  icon: '👁️' },
 };
 
 function RoleBadge({ role }: { role: string }) {
@@ -128,7 +129,7 @@ function UploadButton({ empId, docType, currentUrl, onUploaded }: {
 }
 
 // ── Empty forms ────────────────────────────────────────────────────────
-const EMPTY_ACCOUNT = { username: '', password: '', role: 'worker' };
+const EMPTY_ACCOUNT = { username: '', password: '', role: 'viewer' };
 const EMPTY_EMP = {
   full_name: '', phone: '', rank: '', daily_rate: '',
   passport_no: '', permit_no: '', permit_expire: '',
@@ -275,7 +276,7 @@ export default function StaffPage() {
     if (addStep !== 1) return;
 
     // For leader/worker, we must also collect employee details
-    const needsEmployee = accForm.role === 'leader' || accForm.role === 'worker';
+    const needsEmployee = accForm.role === 'editor' || accForm.role === 'viewer';
     if (needsEmployee) {
       setAddStep(2);
       return;
@@ -411,7 +412,7 @@ export default function StaffPage() {
   function openCreateLogin(row: StaffRow) {
     if (!row.employee_id) return;
     setLoginEmpId(row.employee_id);
-    setLoginForm({ username: '', password: '', role: 'worker' });
+    setLoginForm({ username: '', password: '', role: 'viewer' });
     setShowLoginModal(true);
   }
 
@@ -448,8 +449,8 @@ export default function StaffPage() {
 
   // Roles available based on current user
   const creatableRoles = myRole === 'owner'
-    ? ['owner', 'admin', 'leader', 'worker']
-    : ['leader', 'worker'];
+    ? ['owner', 'admin', 'approval', 'editor', 'viewer']
+    : ['approval', 'editor', 'viewer'];
 
   if (!loaded || !canManage) return null;
 
@@ -584,7 +585,7 @@ export default function StaffPage() {
                               <button className="btn btn-outline btn-sm" onClick={() => openEditAcc(row)}>
                                 🔑 Account
                               </button>
-                              {/* Hide Del if: self, or admin trying to delete admin/owner, or owner trying to delete another owner */}
+                              {/* Hide Del if: self, or admin trying to delete admin/approval/owner, or owner trying to delete another owner */}
                               {row.username !== myUsername &&
                                !(myRole === 'admin' && (row.role === 'admin' || row.role === 'owner')) &&
                                !(myRole === 'owner' && row.role === 'owner') && (
@@ -621,7 +622,7 @@ export default function StaffPage() {
             <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs text-white ${addStep === 1 ? 'bg-primary' : 'bg-gray-300'}`}>1</span>
             Login Account
           </div>
-          {(accForm.role === 'leader' || accForm.role === 'worker') && (
+          {(accForm.role === 'editor' || accForm.role === 'viewer') && (
             <>
               <div className="flex-1 h-px bg-gray-200" />
               <div className={`flex items-center gap-2 text-sm font-semibold ${addStep === 2 ? 'text-primary' : 'text-gray-400'}`}>
@@ -649,9 +650,10 @@ export default function StaffPage() {
                       <div>
                         <p className="text-sm font-semibold text-gray-800">{cfg.label}</p>
                         <p className="text-xs text-gray-400">
-                          {r === 'owner' ? 'Highest authority' :
-                           r === 'admin' ? 'Full management access' :
-                           r === 'leader' ? 'Submit attendance' :
+                          {r === 'owner'    ? 'Highest authority' :
+                           r === 'admin'    ? 'Full management access' :
+                           r === 'approval' ? 'Approve / reject attendance' :
+                           r === 'editor'   ? 'Submit attendance' :
                            'View own records only'}
                         </p>
                       </div>
@@ -670,14 +672,14 @@ export default function StaffPage() {
               <input type="password" className="form-control" required placeholder="Min. 6 characters"
                 value={accForm.password} onChange={e => setAccForm(f => ({ ...f, password: e.target.value }))} />
             </div>
-            {(accForm.role === 'leader' || accForm.role === 'worker') && (
+            {(accForm.role === 'editor' || accForm.role === 'viewer') && (
               <div className="rounded bg-blue-50 border border-blue-200 px-3 py-2 text-xs text-blue-700">
                 💡 Next step: fill in employee details (name, rank, etc.)
               </div>
             )}
             <div className="flex gap-3 pt-1">
               <button type="submit" disabled={addSaving} className="btn btn-primary">
-                {addSaving ? 'Creating…' : (accForm.role === 'leader' || accForm.role === 'worker') ? 'Next →' : 'Create Account'}
+                {addSaving ? 'Creating…' : (accForm.role === 'editor' || accForm.role === 'viewer') ? 'Next →' : 'Create Account'}
               </button>
               <button type="button" className="btn btn-secondary" onClick={() => setShowAddModal(false)}>Cancel</button>
             </div>

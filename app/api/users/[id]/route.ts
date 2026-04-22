@@ -17,9 +17,9 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     updates.password_hash = await bcrypt.hash(body.password, 10);
   }
   if (body.role !== undefined) {
-    const validRoles = ['owner', 'admin', 'leader', 'worker'];
+    const validRoles = ['owner', 'admin', 'approval', 'editor', 'viewer'];
     if (!validRoles.includes(body.role)) return NextResponse.json({ error: 'Invalid role.' }, { status: 400 });
-    if ((body.role === 'owner' || body.role === 'admin') && user.role !== 'owner')
+    if ((body.role === 'owner' || body.role === 'admin' || body.role === 'approval') && user.role !== 'owner' && user.role !== 'admin')
       return NextResponse.json({ error: 'Only the owner can assign owner or admin roles.' }, { status: 403 });
     updates.role = body.role;
   }

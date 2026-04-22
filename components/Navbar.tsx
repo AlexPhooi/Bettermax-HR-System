@@ -12,14 +12,21 @@ const ADMIN_NAV = [
   { href: '/settings',   label: 'Settings' },
 ];
 
-const LEADER_NAV = [
+const APPROVAL_NAV = [
   { href: '/',            label: 'Dashboard' },
   { href: '/attendance',  label: 'Attendance' },
   { href: '/my-salary',   label: 'My Salary' },
   { href: '/my-profile',  label: 'My Profile' },
 ];
 
-const WORKER_NAV = [
+const EDITOR_NAV = [
+  { href: '/',            label: 'Dashboard' },
+  { href: '/attendance',  label: 'Attendance' },
+  { href: '/my-salary',   label: 'My Salary' },
+  { href: '/my-profile',  label: 'My Profile' },
+];
+
+const VIEWER_NAV = [
   { href: '/',              label: 'Dashboard' },
   { href: '/my-attendance', label: 'My Attendance' },
   { href: '/my-salary',     label: 'My Salary' },
@@ -43,9 +50,13 @@ export default function Navbar() {
   const [pendingCount, setPendingCount] = useState(0);
   const bellRef = useRef<HTMLDivElement>(null);
 
-  const isAdmin  = role === 'admin' || role === 'owner';
-  const isWorker = role === 'worker';
-  const navLinks = isAdmin ? ADMIN_NAV : isWorker ? WORKER_NAV : LEADER_NAV;
+  const isAdmin    = role === 'admin' || role === 'owner';
+  const isViewer   = role === 'viewer';
+  const isApproval = role === 'approval';
+  const navLinks   = isAdmin ? ADMIN_NAV
+                   : isViewer ? VIEWER_NAV
+                   : isApproval ? APPROVAL_NAV
+                   : EDITOR_NAV;
 
   useEffect(() => {
     if (!loaded || !isAdmin) return;
@@ -84,7 +95,7 @@ export default function Navbar() {
     <>
       <nav className="bg-primary text-white sticky top-0 z-50 shadow-md">
         <div className="flex items-center h-14 px-4 md:px-6">
-          <Link href={isWorker ? '/my-attendance' : isAdmin ? '/' : '/attendance'}
+          <Link href={isViewer ? '/my-attendance' : isAdmin ? '/' : '/attendance'}
             className="font-bold text-base md:text-lg mr-6 whitespace-nowrap shrink-0">
             🏢 Bettermax HR
           </Link>
@@ -112,8 +123,10 @@ export default function Navbar() {
             {/* Role badge for non-admin */}
             {loaded && !isAdmin && (
               <span className={`hidden sm:inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold
-                ${role === 'leader' ? 'bg-blue-500/30 text-blue-100' : 'bg-green-500/30 text-green-100'}`}>
-                {role === 'leader' ? '👷 Leader' : '👤 Worker'}
+                ${role === 'approval' ? 'bg-purple-500/30 text-purple-100'
+                : role === 'editor'   ? 'bg-blue-500/30 text-blue-100'
+                : 'bg-green-500/30 text-green-100'}`}>
+                {role === 'approval' ? '✅ Approval' : role === 'editor' ? '✏️ Editor' : '👁️ Viewer'}
               </span>
             )}
 

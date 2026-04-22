@@ -121,8 +121,8 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Leader quick links */}
-      {role === 'leader' && (
+      {/* Editor / Approval quick links */}
+      {(role === 'editor' || role === 'approval') && (
         <div className="card">
           <div className="card-title">Quick Access</div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -141,8 +141,8 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Worker quick links */}
-      {role === 'worker' && (
+      {/* Viewer quick links */}
+      {role === 'viewer' && (
         <div className="card">
           <div className="card-title">Quick Access</div>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">

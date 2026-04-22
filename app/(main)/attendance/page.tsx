@@ -955,7 +955,8 @@ function AdminView() {
 export default function AttendancePage() {
   const { role, loaded } = useRole();
   if (!loaded) return <div className="p-8 text-center text-gray-400">Loading…</div>;
-  if (role === 'worker') return <WorkerView />;
-  if (role === 'leader') return <LeaderView />;
+  if (role === 'viewer') return <WorkerView />;
+  if (role === 'editor') return <LeaderView />;
+  // approval, admin, owner all see the full admin view
   return <AdminView />;
 }
