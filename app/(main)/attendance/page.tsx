@@ -1,7 +1,7 @@
 'use client';
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import Modal from '@/components/Modal';
-import { formatDate, formatTime, getCurrentMonth, calcHoursAndDays } from '@/lib/utils';
+import { formatDate, getCurrentMonth, calcHoursAndDays } from '@/lib/utils';
 import { useRole } from '@/lib/role-context';
 
 interface AttRecord {
@@ -18,12 +18,14 @@ interface AttRecord {
   status: string;
   site_clean: boolean;
   site_bonus: number;
+  photo_url: string | null;
   employees: { full_name: string; daily_rate: number } | null;
   projects: { name: string; code: string | null } | null;
 }
 
 interface Employee { id: string; full_name: string; status: string; }
 interface Project  { id: string; name: string; code: string | null; status: string; }
+interface Advance  { id: string; employee_id: string; advance_date: string | null; amount: number; }
 interface OTPreview { hours: number; days: number; lunchDeducted: boolean; }
 
 function calcOT(date: string, inT: string, outT: string): OTPreview | null {
@@ -49,6 +51,51 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+// ── Photo cell: thumbnail + upload ──────────────────────────────────────
+function PhotoCell({ rec, onUploaded }: { rec: AttRecord; onUploaded: (id: string, url: string) => void }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('type', 'attendance');
+      fd.append('record_id', rec.id);
+      const res  = await fetch('/api/upload', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (res.ok && data.url) onUploaded(rec.id, data.url);
+    } finally {
+      setUploading(false);
+      if (inputRef.current) inputRef.current.value = '';
+    }
+  }
+
+  if (rec.photo_url) {
+    return (
+      <a href={rec.photo_url} target="_blank" rel="noopener noreferrer" className="block">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={rec.photo_url} alt="site" className="w-12 h-12 object-cover rounded border border-gray-200 hover:opacity-80 transition-opacity" />
+      </a>
+    );
+  }
+  return (
+    <>
+      <input ref={inputRef} type="file" accept="image/*,.pdf" className="hidden" onChange={handleFile} />
+      <button
+        type="button"
+        disabled={uploading}
+        onClick={() => inputRef.current?.click()}
+        className="btn btn-outline btn-sm text-xs whitespace-nowrap">
+        {uploading ? '⏳' : '📷 Upload'}
+      </button>
+    </>
+  );
+}
+
 export default function AttendancePage() {
   const { role } = useRole();
   const isAdmin  = role === 'admin' || role === 'owner';
@@ -57,6 +104,7 @@ export default function AttendancePage() {
   const [records, setRecords]     = useState<AttRecord[]>([]);
   const [empList, setEmpList]     = useState<Employee[]>([]);
   const [projList, setProjList]   = useState<Project[]>([]);
+  const [advances, setAdvances]   = useState<Advance[]>([]);
   const [loading, setLoading]     = useState(true);
   const [alertMsg, setAlertMsg]   = useState('');
   const [alertType, setAlertType] = useState<'success' | 'danger' | 'info'>('success');
@@ -87,20 +135,33 @@ export default function AttendancePage() {
     setTimeout(() => setAlertMsg(''), 5000);
   }
 
+  // Build advance lookup: `employeeId_date` → total amount
+  const advanceMap = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const a of advances) {
+      if (!a.advance_date) continue;
+      const key = `${a.employee_id}_${a.advance_date}`;
+      m[key] = (m[key] || 0) + Number(a.amount);
+    }
+    return m;
+  }, [advances]);
+
   const loadData = useCallback(async () => {
     setLoading(true);
     const params = new URLSearchParams();
     if (filterMonth)   params.set('month',       filterMonth);
     if (filterEmp)     params.set('employee_id', filterEmp);
     if (filterProject) params.set('project_id',  filterProject);
-    const [recRes, empRes, projRes] = await Promise.all([
+    const [recRes, empRes, projRes, advRes] = await Promise.all([
       fetch(`/api/attendance?${params}`).then(r => r.json()),
       fetch('/api/employees').then(r => r.json()),
       fetch('/api/projects').then(r => r.json()),
+      fetch(`/api/advances?month=${filterMonth}`).then(r => r.json()),
     ]);
     setRecords(Array.isArray(recRes) ? recRes : []);
     setEmpList(Array.isArray(empRes) ? empRes.filter((e: Employee) => e.status === 'active') : []);
     setProjList(Array.isArray(projRes) ? projRes : []);
+    setAdvances(Array.isArray(advRes) ? advRes : []);
     setLoading(false);
   }, [filterMonth, filterEmp, filterProject]);
 
@@ -242,6 +303,12 @@ export default function AttendancePage() {
     } finally { setApproving(null); }
   }
 
+  // Update photo_url locally after upload (avoids full reload)
+  function handlePhotoUploaded(id: string, url: string) {
+    setRecords(prev => prev.map(r => r.id === id ? { ...r, photo_url: url } : r));
+    showAlert('Photo uploaded ✅');
+  }
+
   function OTBox({ ot }: { ot: OTPreview | null }) {
     if (!ot) return null;
     const isOT = ot.hours > 8;
@@ -249,7 +316,7 @@ export default function AttendancePage() {
       <div className={`rounded p-3 text-sm mt-2 ${isOT ? 'bg-orange-50 border border-orange-200' : 'bg-blue-50 border border-blue-200'}`}>
         <div className="flex flex-wrap gap-4">
           <span><strong>Hours:</strong> {ot.hours}h</span>
-          <span><strong>Days:</strong> {ot.days.toFixed(4)}</span>
+          <span><strong>Gong:</strong> {ot.days.toFixed(2)} 工</span>
           {ot.lunchDeducted && <span className="text-gray-500">(–1h lunch deducted)</span>}
           {isOT && <span className="text-warn font-semibold">OT: +{(ot.hours - 8).toFixed(2)}h</span>}
         </div>
@@ -277,7 +344,7 @@ export default function AttendancePage() {
         )}
       </div>
 
-      {alertMsg && <div className={`alert alert-${alertType}`}>{alertMsg}</div>}
+      {alertMsg && <div className={`alert alert-${alertType} mb-4`}>{alertMsg}</div>}
 
       {/* ── Pending Approvals (admin only) ── */}
       {isAdmin && pendingRecords.length > 0 && (
@@ -293,12 +360,11 @@ export default function AttendancePage() {
               <thead>
                 <tr>
                   <th className="table-th">Date</th>
-                  <th className="table-th">Employee</th>
+                  <th className="table-th">Name</th>
                   <th className="table-th">Project</th>
-                  <th className="table-th">Hours</th>
-                  <th className="table-th">Site Clean</th>
-                  <th className="table-th">Bonus</th>
-                  <th className="table-th">Notes</th>
+                  <th className="table-th">Gong 工</th>
+                  <th className="table-th">Site Bonus</th>
+                  <th className="table-th">Photo</th>
                   <th className="table-th">Actions</th>
                 </tr>
               </thead>
@@ -308,26 +374,23 @@ export default function AttendancePage() {
                     <td className="table-td whitespace-nowrap">{formatDate(rec.work_date)}</td>
                     <td className="table-td font-medium">{rec.employees?.full_name || '-'}</td>
                     <td className="table-td">
-                      {rec.projects
-                        ? <span className="badge bg-blue-100 text-blue-700">{rec.projects.code || rec.projects.name}</span>
-                        : <span className="text-gray-400">-</span>}
-                      {rec.is_rework && <span className="badge bg-orange-100 text-orange-700 text-xs ml-1">🔄 Rework</span>}
+                      <div className="flex flex-wrap gap-1">
+                        {rec.projects
+                          ? <span className="badge bg-blue-100 text-blue-700">{rec.projects.code || rec.projects.name}</span>
+                          : <span className="text-gray-400">-</span>}
+                        {rec.is_rework && <span className="badge bg-orange-100 text-orange-700 text-xs">🔄 Rework</span>}
+                      </div>
                     </td>
-                    <td className="table-td">
-                      <span className={Number(rec.hours_worked) > 8 ? 'text-warn font-semibold' : ''}>
-                        {Number(rec.hours_worked).toFixed(2)}h
-                      </span>
-                    </td>
-                    <td className="table-td text-center">
-                      {rec.site_clean ? <span className="text-green-600 font-semibold">✅ Yes</span> : <span className="text-gray-400">No</span>}
+                    <td className="table-td font-semibold">
+                      {Number(rec.days_worked).toFixed(2)} 工
                     </td>
                     <td className="table-td">
                       {Number(rec.site_bonus) > 0
                         ? <span className="badge bg-green-100 text-green-700">+RM{Number(rec.site_bonus).toFixed(2)}</span>
                         : <span className="text-gray-400">-</span>}
                     </td>
-                    <td className="table-td text-gray-500 max-w-[120px]">
-                      <span className="truncate block">{rec.notes || '-'}</span>
+                    <td className="table-td">
+                      <PhotoCell rec={rec} onUploaded={handlePhotoUploaded} />
                     </td>
                     <td className="table-td">
                       <div className="flex gap-1.5">
@@ -401,6 +464,7 @@ export default function AttendancePage() {
         </div>
       </div>
 
+      {/* ── Main Records Table ── */}
       <div className="card p-0 overflow-hidden">
         <div className="px-6 py-4 border-b border-bg">
           <span className="text-sm font-semibold text-primary">
@@ -420,60 +484,70 @@ export default function AttendancePage() {
               <thead>
                 <tr>
                   <th className="table-th">Date</th>
-                  <th className="table-th">Employee</th>
+                  <th className="table-th">Name</th>
                   <th className="table-th">Project</th>
-                  <th className="table-th">Hours</th>
-                  <th className="table-th">Days</th>
-                  {isAdmin && <th className="table-th">Site Bonus</th>}
+                  <th className="table-th">Gong 工</th>
+                  <th className="table-th">Site Bonus</th>
+                  <th className="table-th">Advance</th>
+                  <th className="table-th">Photo</th>
                   <th className="table-th">Status</th>
-                  <th className="table-th">Notes</th>
                   {isAdmin && <th className="table-th">Actions</th>}
                 </tr>
               </thead>
               <tbody>
-                {displayRecords.map(rec => (
-                  <tr key={rec.id} className={`table-tr ${rec.is_rework ? 'bg-orange-50' : ''}`}>
-                    <td className="table-td whitespace-nowrap">{formatDate(rec.work_date)}</td>
-                    <td className="table-td font-medium">{rec.employees?.full_name || '-'}</td>
-                    <td className="table-td">
-                      <div className="flex flex-col gap-1">
-                        {rec.projects
-                          ? <span className="badge bg-blue-100 text-blue-700">{rec.projects.code || rec.projects.name}</span>
-                          : <span className="text-gray-400">-</span>}
-                        {rec.is_rework && (
-                          <span className="badge bg-orange-100 text-orange-700 text-xs">🔄 Rework</span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="table-td">
-                      <span className={Number(rec.hours_worked) > 8 ? 'text-warn font-semibold' : ''}>
-                        {Number(rec.hours_worked).toFixed(2)}h
-                      </span>
-                    </td>
-                    <td className="table-td">{Number(rec.days_worked).toFixed(4)}</td>
-                    {isAdmin && (
+                {displayRecords.map(rec => {
+                  const advKey    = `${rec.employee_id}_${rec.work_date}`;
+                  const advAmount = advanceMap[advKey] ?? 0;
+                  return (
+                    <tr key={rec.id} className={`table-tr ${rec.is_rework ? 'bg-orange-50' : ''}`}>
+                      <td className="table-td whitespace-nowrap text-sm">{formatDate(rec.work_date)}</td>
+                      <td className="table-td font-medium">{rec.employees?.full_name || '-'}</td>
+                      <td className="table-td">
+                        <div className="flex flex-wrap gap-1">
+                          {rec.projects
+                            ? <span className="badge bg-blue-100 text-blue-700">{rec.projects.code || rec.projects.name}</span>
+                            : <span className="text-gray-400">-</span>}
+                          {rec.is_rework && (
+                            <span className="badge bg-orange-100 text-orange-700 text-xs">🔄 Rework</span>
+                          )}
+                        </div>
+                      </td>
+                      {/* Gong 工: days_worked displayed as "X.XX 工" */}
+                      <td className="table-td">
+                        <span className={`font-semibold ${Number(rec.days_worked) > 1 ? 'text-warn' : 'text-primary'}`}>
+                          {Number(rec.days_worked).toFixed(2)} 工
+                        </span>
+                      </td>
+                      {/* Site Bonus */}
                       <td className="table-td">
                         {Number(rec.site_bonus) > 0
                           ? <span className="badge bg-green-100 text-green-700">+RM{Number(rec.site_bonus).toFixed(2)}</span>
-                          : <span className="text-gray-400">-</span>}
+                          : <span className="text-gray-400 text-sm">-</span>}
                       </td>
-                    )}
-                    <td className="table-td"><StatusBadge status={rec.status || 'pending'} /></td>
-                    <td className="table-td text-gray-500 max-w-[150px]">
-                      {rec.is_rework && rec.notes
-                        ? <span className="text-orange-700 font-medium">{rec.notes}</span>
-                        : <span className="truncate block">{rec.notes || '-'}</span>}
-                    </td>
-                    {isAdmin && (
+                      {/* Advance for this employee on this date */}
                       <td className="table-td">
-                        <div className="flex gap-1.5">
-                          <button className="btn btn-outline btn-sm" onClick={() => openEdit(rec)}>Edit</button>
-                          <button className="btn btn-danger btn-sm" onClick={() => handleDelete(rec.id)}>Del</button>
-                        </div>
+                        {advAmount > 0
+                          ? <span className="badge bg-red-100 text-red-700">-RM{advAmount.toFixed(2)}</span>
+                          : <span className="text-gray-400 text-sm">-</span>}
                       </td>
-                    )}
-                  </tr>
-                ))}
+                      {/* Photo */}
+                      <td className="table-td">
+                        <PhotoCell rec={rec} onUploaded={handlePhotoUploaded} />
+                      </td>
+                      <td className="table-td">
+                        <StatusBadge status={rec.status || 'pending'} />
+                      </td>
+                      {isAdmin && (
+                        <td className="table-td">
+                          <div className="flex gap-1.5">
+                            <button className="btn btn-outline btn-sm" onClick={() => openEdit(rec)}>Edit</button>
+                            <button className="btn btn-danger btn-sm" onClick={() => handleDelete(rec.id)}>Del</button>
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}

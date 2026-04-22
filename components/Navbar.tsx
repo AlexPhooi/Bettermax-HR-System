@@ -6,11 +6,10 @@ import { useRole } from '@/lib/role-context';
 
 const ADMIN_NAV = [
   { href: '/',           label: 'Dashboard' },
-  { href: '/projects',   label: 'Projects' },
   { href: '/staff',      label: 'Staff' },
   { href: '/attendance', label: 'Attendance' },
   { href: '/salary',     label: 'Salary' },
-  { href: '/advances',   label: 'Advances' },
+  { href: '/settings',   label: 'Settings' },
 ];
 
 const LEADER_NAV = [
