@@ -131,6 +131,14 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Managers can set status directly (e.g. 'approved' for manual entry)
+  const { isManager: checkManager } = await import('@/lib/auth');
+  const recordStatus = checkManager(user.role) && body.status === 'approved' ? 'approved' : 'pending';
+
+  // Site bonus for manual approved entry
+  const site_clean = Boolean(body.site_clean);
+  const site_bonus = site_clean && hours_worked >= 8 ? 10 : 0;
+
   const inserted: unknown[] = [];
   const skipped: string[] = [];
   for (const employee_id of ids) {
@@ -145,10 +153,10 @@ export async function POST(req: NextRequest) {
       ot_hours,
       notes:                body.notes?.trim() || null,
       is_rework,
-      status:               'pending',
+      status:               recordStatus,
       submitted_by:         user.id,
-      site_clean:           false,
-      site_bonus:           0,
+      site_clean,
+      site_bonus:           recordStatus === 'approved' ? site_bonus : 0,
       check_in_photo_url:   body.check_in_photo_url  || null,
       check_out_photo_url:  body.check_out_photo_url || null,
       site_photo_front_url: body.site_photo_front_url || null,

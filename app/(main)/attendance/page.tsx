@@ -552,10 +552,16 @@ function LeaderView() {
 // ══════════════════════════════════════════════════════════════════════
 // ADMIN VIEW — grouped by Date + Project, expandable Details
 // ══════════════════════════════════════════════════════════════════════
+const EMPTY_ADD = {
+  work_date: today(), project_id: '', work_hours: 8, ot_hours: 0,
+  site_clean: false, notes: '', status: 'approved',
+};
+
 function AdminView() {
   const [records,  setRecords]  = useState<AttRecord[]>([]);
   const [advances, setAdvances] = useState<Advance[]>([]);
   const [projList, setProjList] = useState<Project[]>([]);
+  const [empList,  setEmpList]  = useState<Employee[]>([]);
   const [loading,  setLoading]  = useState(true);
   const [alertMsg, setAlertMsg] = useState('');
   const [alertType, setAlertType] = useState<'success' | 'danger' | 'info'>('success');
@@ -568,6 +574,13 @@ function AdminView() {
   // Per-group edit state: groupKey → { workHours, otHours, siteClean }
   const [groupEdits, setGroupEdits] = useState<Record<string, { workHours: number; otHours: number; siteClean: boolean }>>({});
 
+  // Add Attendance modal
+  const [showAddModal, setShowAddModal]   = useState(false);
+  const [addForm, setAddForm]             = useState({ ...EMPTY_ADD });
+  const [addSelectedIds, setAddSelectedIds] = useState<Set<string>>(new Set());
+  const [addEmpSearch, setAddEmpSearch]   = useState('');
+  const [addSaving, setAddSaving]         = useState(false);
+
   function showAlert(msg: string, type: 'success' | 'danger' | 'info' = 'success') {
     setAlertMsg(msg); setAlertType(type); setTimeout(() => setAlertMsg(''), 5000);
   }
@@ -578,14 +591,16 @@ function AdminView() {
     if (filterMonth)   params.set('month',      filterMonth);
     if (filterProject) params.set('project_id', filterProject);
     if (filterStatus)  params.set('status',     filterStatus);
-    const [recRes, projRes, advRes] = await Promise.all([
+    const [recRes, projRes, advRes, empRes] = await Promise.all([
       fetch(`/api/attendance?${params}`).then(r => r.json()),
       fetch('/api/projects').then(r => r.json()),
       fetch(`/api/advances?month=${filterMonth}`).then(r => r.json()),
+      fetch('/api/employees').then(r => r.json()),
     ]);
     setRecords(Array.isArray(recRes)  ? recRes  : []);
     setProjList(Array.isArray(projRes) ? projRes : []);
     setAdvances(Array.isArray(advRes) ? advRes  : []);
+    setEmpList(Array.isArray(empRes)  ? empRes.filter((e: Employee) => e.status === 'active') : []);
     setLoading(false);
   }, [filterMonth, filterProject, filterStatus]);
 
@@ -680,17 +695,62 @@ function AdminView() {
     loadData();
   }
 
+  async function handleAddAttendance(e: React.FormEvent) {
+    e.preventDefault();
+    if (addSelectedIds.size === 0) { showAlert('Select at least one employee.', 'danger'); return; }
+    if (!addForm.work_date) { showAlert('Date is required.', 'danger'); return; }
+    setAddSaving(true);
+    try {
+      const res = await fetch('/api/attendance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          employee_ids: Array.from(addSelectedIds),
+          work_date:   addForm.work_date,
+          project_id:  addForm.project_id || null,
+          work_hours:  addForm.work_hours,
+          ot_hours:    addForm.ot_hours,
+          site_clean:  addForm.site_clean,
+          notes:       addForm.notes,
+          status:      addForm.status,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) { showAlert(data.error || 'Failed to add.', 'danger'); return; }
+      const count = data.inserted?.length || 0;
+      const skip  = data.skipped?.length  || 0;
+      showAlert(`✅ Added ${count} record${count !== 1 ? 's' : ''}${skip ? ` (${skip} skipped — duplicate)` : ''}.`);
+      setShowAddModal(false);
+      setAddForm({ ...EMPTY_ADD });
+      setAddSelectedIds(new Set());
+      setAddEmpSearch('');
+      loadData();
+    } finally { setAddSaving(false); }
+  }
+
   const pendingCount = groups.filter(g => g.status === 'pending').length;
 
   return (
     <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-5">
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="text-2xl font-bold text-primary">Attendance</h1>
-        {pendingCount > 0 && (
-          <span className="badge bg-yellow-100 text-yellow-700 text-sm px-3 py-1">
-            🟡 {pendingCount} session{pendingCount !== 1 ? 's' : ''} pending approval
-          </span>
-        )}
+        <div>
+          <h1 className="text-2xl font-bold text-primary">Attendance</h1>
+          {pendingCount > 0 && (
+            <span className="badge bg-yellow-100 text-yellow-700 text-sm px-3 py-1 mt-1 inline-block">
+              🟡 {pendingCount} session{pendingCount !== 1 ? 's' : ''} pending approval
+            </span>
+          )}
+        </div>
+        <button
+          className="btn btn-primary"
+          onClick={() => {
+            setAddForm({ ...EMPTY_ADD });
+            setAddSelectedIds(new Set());
+            setAddEmpSearch('');
+            setShowAddModal(true);
+          }}>
+          + Add Attendance
+        </button>
       </div>
 
       {alertMsg && <div className={`alert alert-${alertType}`}>{alertMsg}</div>}
@@ -942,6 +1002,148 @@ function AdminView() {
                 })}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* ── Add Attendance Modal ─────────────────────────────────────── */}
+      {showAddModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+              <h2 className="text-lg font-bold text-primary">+ Add Attendance</h2>
+              <button onClick={() => setShowAddModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+            </div>
+
+            <form onSubmit={handleAddAttendance} className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+
+              {/* Date + Project */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="form-label">Date *</label>
+                  <input type="date" className="form-control" required
+                    value={addForm.work_date}
+                    onChange={e => setAddForm(f => ({ ...f, work_date: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="form-label">Project</label>
+                  <select className="form-control" value={addForm.project_id}
+                    onChange={e => setAddForm(f => ({ ...f, project_id: e.target.value }))}>
+                    <option value="">— No Project —</option>
+                    {projList.map(p => <option key={p.id} value={p.id}>{p.code ? `${p.code} ${p.name}` : p.name}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {/* Employees */}
+              <div>
+                <label className="form-label">
+                  Employees *
+                  <span className="ml-2 text-primary font-bold">{addSelectedIds.size} selected</span>
+                </label>
+                <input
+                  className="form-control mb-2"
+                  placeholder="Search employee…"
+                  value={addEmpSearch}
+                  onChange={e => setAddEmpSearch(e.target.value)}
+                />
+                <div className="border border-gray-200 rounded-lg max-h-44 overflow-y-auto divide-y divide-gray-100">
+                  {empList
+                    .filter(emp => emp.full_name.toLowerCase().includes(addEmpSearch.toLowerCase()))
+                    .map(emp => (
+                      <label key={emp.id}
+                        className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-gray-50 transition-colors ${addSelectedIds.has(emp.id) ? 'bg-primary/5' : ''}`}>
+                        <input type="checkbox"
+                          checked={addSelectedIds.has(emp.id)}
+                          onChange={e => {
+                            const next = new Set(addSelectedIds);
+                            e.target.checked ? next.add(emp.id) : next.delete(emp.id);
+                            setAddSelectedIds(next);
+                          }}
+                          className="w-4 h-4 accent-primary" />
+                        <span className="text-sm font-medium text-gray-800">{emp.full_name}</span>
+                      </label>
+                    ))}
+                  {empList.filter(e => e.full_name.toLowerCase().includes(addEmpSearch.toLowerCase())).length === 0 && (
+                    <p className="p-4 text-center text-sm text-gray-400">No employees found.</p>
+                  )}
+                </div>
+                <div className="flex gap-2 mt-1.5">
+                  <button type="button" className="text-xs text-primary underline"
+                    onClick={() => setAddSelectedIds(new Set(empList.map(e => e.id)))}>Select all</button>
+                  <span className="text-gray-300">|</span>
+                  <button type="button" className="text-xs text-gray-500 underline"
+                    onClick={() => setAddSelectedIds(new Set())}>Clear</button>
+                </div>
+              </div>
+
+              {/* Hours */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div>
+                  <label className="form-label">Work Hours *</label>
+                  <select className="form-control" value={addForm.work_hours}
+                    onChange={e => setAddForm(f => ({ ...f, work_hours: Number(e.target.value) }))}>
+                    {[1,2,3,4,5,6,7,8,9,10,11,12].map(h => <option key={h} value={h}>{h}h</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="form-label">OT Hours</label>
+                  <select className="form-control" value={addForm.ot_hours}
+                    onChange={e => setAddForm(f => ({ ...f, ot_hours: Number(e.target.value) }))}>
+                    {[0,1,2,3,4,5,6,7,8].map(h => <option key={h} value={h}>+{h}h</option>)}
+                  </select>
+                </div>
+                <div className="flex flex-col justify-end">
+                  <p className="form-label">Total 工</p>
+                  <div className="form-control bg-gray-50 font-bold text-primary text-center">
+                    {((addForm.work_hours + addForm.ot_hours) / 8).toFixed(2)} 工
+                  </div>
+                </div>
+                <div className="flex flex-col justify-end">
+                  <label className="form-label">Status</label>
+                  <select className="form-control" value={addForm.status}
+                    onChange={e => setAddForm(f => ({ ...f, status: e.target.value }))}>
+                    <option value="approved">✅ Approved</option>
+                    <option value="pending">🟡 Pending</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Site Bonus */}
+              <label className={`flex items-start gap-3 cursor-pointer rounded-xl border-2 p-3 transition-colors ${addForm.site_clean ? 'border-green-400 bg-green-50' : 'border-gray-200 bg-white'}`}>
+                <input type="checkbox" className="mt-0.5 w-4 h-4 accent-green-600"
+                  checked={addForm.site_clean}
+                  onChange={e => setAddForm(f => ({ ...f, site_clean: e.target.checked }))} />
+                <div>
+                  <p className="text-sm font-semibold text-gray-800">🧹 Site was clean</p>
+                  <p className="text-xs text-gray-500">+RM10 per worker if ≥ 8h worked</p>
+                  {addForm.site_clean && addForm.work_hours + addForm.ot_hours >= 8 && (
+                    <p className="text-xs text-green-700 font-semibold mt-0.5">
+                      +RM10 × {addSelectedIds.size} = +RM{(addSelectedIds.size * 10).toFixed(2)}
+                    </p>
+                  )}
+                </div>
+              </label>
+
+              {/* Notes */}
+              <div>
+                <label className="form-label">Notes <span className="text-gray-400 font-normal">(optional)</span></label>
+                <textarea className="form-control" rows={2} placeholder="Remark, rework reason…"
+                  value={addForm.notes}
+                  onChange={e => setAddForm(f => ({ ...f, notes: e.target.value }))} />
+              </div>
+            </form>
+
+            {/* Footer */}
+            <div className="flex gap-3 px-6 py-4 border-t border-gray-100">
+              <button type="button" disabled={addSaving}
+                onClick={handleAddAttendance}
+                className="btn btn-primary flex-1">
+                {addSaving ? 'Saving…' : `+ Add ${addSelectedIds.size > 0 ? addSelectedIds.size + ' ' : ''}Record${addSelectedIds.size !== 1 ? 's' : ''}`}
+              </button>
+              <button type="button" className="btn btn-secondary" onClick={() => setShowAddModal(false)}>Cancel</button>
+            </div>
           </div>
         </div>
       )}
