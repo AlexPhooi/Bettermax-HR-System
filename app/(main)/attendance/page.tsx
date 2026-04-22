@@ -695,6 +695,19 @@ function AdminView() {
     loadData();
   }
 
+  // Auto-select workers from the most recent session of the chosen project
+  useEffect(() => {
+    if (!showAddModal) return;
+    if (!addForm.project_id) { setAddSelectedIds(new Set()); return; }
+    // Find all records for this project, pick the most recent date
+    const projectRecs = records.filter(r => r.project_id === addForm.project_id);
+    if (projectRecs.length === 0) { setAddSelectedIds(new Set()); return; }
+    const latestDate = projectRecs.reduce((max, r) => r.work_date > max ? r.work_date : max, '');
+    const latestIds  = projectRecs.filter(r => r.work_date === latestDate).map(r => r.employee_id);
+    setAddSelectedIds(new Set(latestIds));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [addForm.project_id, showAddModal]);
+
   async function handleAddAttendance(e: React.FormEvent) {
     e.preventDefault();
     if (addSelectedIds.size === 0) { showAlert('Select at least one employee.', 'danger'); return; }
@@ -1041,6 +1054,9 @@ function AdminView() {
                 <label className="form-label">
                   Employees *
                   <span className="ml-2 text-primary font-bold">{addSelectedIds.size} selected</span>
+                  {addForm.project_id && addSelectedIds.size > 0 && (
+                    <span className="ml-2 text-xs text-gray-400 font-normal">↩ auto-filled from last session</span>
+                  )}
                 </label>
                 <input
                   className="form-control mb-2"
