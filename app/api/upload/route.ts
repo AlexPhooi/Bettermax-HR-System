@@ -2,14 +2,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getUser } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 
+// Photo types that just return a URL without DB auto-update
+const URL_ONLY_TYPES = ['check_in_photo', 'check_out_photo', 'site_front', 'site_back', 'site_store', 'avatar'];
+
 export async function POST(req: NextRequest) {
   if (!await getUser(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const form        = await req.formData();
   const file        = form.get('file') as File | null;
-  const docType     = form.get('type') as string;   // 'passport' | 'permit' | 'attendance'
+  const docType     = form.get('type') as string;
   const employee_id = form.get('employee_id') as string | null;
-  const record_id   = form.get('record_id')   as string | null;  // attendance record id
+  const record_id   = form.get('record_id')   as string | null;
+  const label       = form.get('label')       as string | null; // front/back/store for site photos
 
   if (!file) return NextResponse.json({ error: 'No file provided.' }, { status: 400 });
 
@@ -19,14 +23,27 @@ export async function POST(req: NextRequest) {
   if (file.size > 10 * 1024 * 1024)
     return NextResponse.json({ error: 'File must be under 10 MB.' }, { status: 400 });
 
-  const ext  = file.name.split('.').pop()?.toLowerCase() || 'bin';
+  const ext = file.name.split('.').pop()?.toLowerCase() || 'bin';
+  const ts  = Date.now();
   let path: string;
 
-  if (docType === 'attendance') {
-    path = `attendance/${record_id || 'tmp'}_${Date.now()}.${ext}`;
+  if (URL_ONLY_TYPES.includes(docType)) {
+    // Group / site / avatar photos — just upload, return URL
+    if (docType === 'avatar' && employee_id) {
+      path = `${employee_id}/avatar_${ts}.${ext}`;
+    } else if (docType.startsWith('site') && label) {
+      path = `attendance/site/${label}_${ts}.${ext}`;
+    } else {
+      path = `attendance/${docType}_${ts}.${ext}`;
+    }
+  } else if (docType === 'attendance' && record_id) {
+    // Legacy: single attendance photo linked to a record
+    path = `attendance/${record_id}_${ts}.${ext}`;
+  } else if (docType === 'passport' || docType === 'permit') {
+    if (!employee_id) return NextResponse.json({ error: 'employee_id required.' }, { status: 400 });
+    path = `${employee_id}/${docType}_${ts}.${ext}`;
   } else {
-    if (!employee_id) return NextResponse.json({ error: 'employee_id is required.' }, { status: 400 });
-    path = `${employee_id}/${docType}_${Date.now()}.${ext}`;
+    path = `misc/${docType}_${ts}.${ext}`;
   }
 
   const bytes  = await file.arrayBuffer();
@@ -40,11 +57,13 @@ export async function POST(req: NextRequest) {
 
   const { data: { publicUrl } } = supabase.storage.from('hr-documents').getPublicUrl(path);
 
-  // Persist URL on the appropriate row
+  // Auto-update DB for types that link to a specific record
   if (docType === 'passport' && employee_id) {
     await supabase.from('employees').update({ passport_doc_url: publicUrl }).eq('id', employee_id);
   } else if (docType === 'permit' && employee_id) {
     await supabase.from('employees').update({ permit_doc_url: publicUrl }).eq('id', employee_id);
+  } else if (docType === 'avatar' && employee_id) {
+    await supabase.from('employees').update({ avatar_url: publicUrl }).eq('id', employee_id);
   } else if (docType === 'attendance' && record_id) {
     await supabase.from('hr_attendance').update({ photo_url: publicUrl }).eq('id', record_id);
   }

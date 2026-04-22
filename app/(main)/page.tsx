@@ -121,8 +121,28 @@ export default function DashboardPage() {
         </div>
       )}
 
+      {/* Leader quick links */}
+      {role === 'leader' && (
+        <div className="card">
+          <div className="card-title">Quick Access</div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {[
+              { href: '/attendance',  icon: '📋', label: 'Attendance' },
+              { href: '/my-salary',   icon: '💰', label: 'My Salary' },
+              { href: '/my-profile',  icon: '👤', label: 'My Profile' },
+            ].map(q => (
+              <Link key={q.href} href={q.href}
+                className="block bg-white border-2 border-gray-200 hover:border-primary rounded-lg p-4 text-center transition-all hover:shadow-md hover:-translate-y-0.5">
+                <div className="text-3xl mb-2">{q.icon}</div>
+                <div className="text-sm font-semibold text-primary">{q.label}</div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Worker quick links */}
-      {!isAdmin && (
+      {role === 'worker' && (
         <div className="card">
           <div className="card-title">Quick Access</div>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">

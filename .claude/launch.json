@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Bettermax HR System (Next.js dev)",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["node_modules/.bin/next", "dev", "--port", "3000"],
+      "port": 3000
+    }
+  ]
+}

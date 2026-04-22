@@ -12,6 +12,7 @@ export async function GET(req: NextRequest) {
     .select('*, employees(full_name, daily_rate), projects(name, code)')
     .order('work_date', { ascending: false });
 
+  // Date / month filter
   const date  = sp.get('date');
   const month = sp.get('month');
   if (date) {
@@ -22,11 +23,27 @@ export async function GET(req: NextRequest) {
       .lte('work_date', new Date(+y, +m, 0).toISOString().split('T')[0]);
   }
 
-  // Workers can only see their own records
+  // Optional status filter
+  const statusFilter = sp.get('status');
+  if (statusFilter) query = query.eq('status', statusFilter);
+
+  // Role-based visibility
   if (user.role === 'worker') {
+    // Workers see only their own records
     if (!user.employee_id) return NextResponse.json([]);
     query = query.eq('employee_id', user.employee_id);
+
+  } else if (user.role === 'leader') {
+    const mode = sp.get('mode');
+    if (mode === 'personal' && user.employee_id) {
+      // Leader's own attendance records (for My History tab)
+      query = query.eq('employee_id', user.employee_id);
+    } else {
+      // Leader sees all records submitted by themselves (team management)
+      query = query.eq('submitted_by', user.id);
+    }
   } else {
+    // Admin / owner: apply optional filters
     if (sp.get('employee_id')) query = query.eq('employee_id', sp.get('employee_id')!);
     if (sp.get('project_id'))  query = query.eq('project_id',  sp.get('project_id')!);
   }
@@ -39,45 +56,103 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const user = await getUser(req);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (user.role === 'worker') return NextResponse.json({ error: 'Forbidden — workers cannot record attendance.' }, { status: 403 });
+  if (user.role === 'worker') return NextResponse.json({ error: 'Forbidden.' }, { status: 403 });
 
   const body = await req.json();
   const ids: string[] = body.employee_ids?.length ? body.employee_ids : (body.employee_id ? [body.employee_id] : []);
-  if (!ids.length) return NextResponse.json({ error: 'At least one employee is required.' }, { status: 400 });
-  if (!body.work_date)           return NextResponse.json({ error: 'Work date is required.' }, { status: 400 });
-  if (!body.clock_in || !body.clock_out) return NextResponse.json({ error: 'Clock in and out required.' }, { status: 400 });
+  if (!ids.length)      return NextResponse.json({ error: 'At least one employee required.' }, { status: 400 });
+  if (!body.work_date)  return NextResponse.json({ error: 'Work date is required.' }, { status: 400 });
 
-  const calc = calcHoursAndDays(body.work_date, body.clock_in, body.clock_out);
-  if (!calc) return NextResponse.json({ error: 'Clock out must be after clock in.' }, { status: 400 });
+  // ── Check-in (draft) mode ──────────────────────────────────────────
+  const isDraft = body.status === 'draft';
 
-  // Detect rework: attendance on a completed project
+  if (isDraft) {
+    // Morning check-in: just project, date, workers, check-in photo
+    const inserted: unknown[] = [];
+    const skipped: string[] = [];
+    for (const employee_id of ids) {
+      const { data, error } = await supabase.from('hr_attendance').insert({
+        employee_id,
+        project_id:        body.project_id || null,
+        work_date:         body.work_date,
+        hours_worked:      0,
+        days_worked:       0,
+        ot_hours:          0,
+        status:            'draft',
+        submitted_by:      user.id,
+        site_clean:        false,
+        site_bonus:        0,
+        check_in_photo_url: body.check_in_photo_url || null,
+        notes:             body.notes?.trim() || null,
+      }).select().single();
+      if (error) {
+        if (error.code === '23505') skipped.push(employee_id);
+        else return NextResponse.json({ error: error.message }, { status: 500 });
+      } else inserted.push(data);
+    }
+    return NextResponse.json({ inserted, skipped });
+  }
+
+  // ── Full submission (pending) mode ─────────────────────────────────
+  // Supports both new (work_hours/ot_hours) and legacy (clock_in/clock_out) input
+  let hours_worked: number;
+  let days_worked: number;
+  let ot_hours = Number(body.ot_hours) || 0;
+  let clock_in: string | null  = null;
+  let clock_out: string | null = null;
+
+  if (body.work_hours) {
+    // New leader flow: direct hours entry
+    const work_hours = Number(body.work_hours);
+    hours_worked = work_hours + ot_hours;
+    days_worked  = hours_worked / 8;
+  } else if (body.clock_in && body.clock_out) {
+    // Legacy admin flow: calculate from clock times
+    const calc = calcHoursAndDays(body.work_date, body.clock_in, body.clock_out);
+    if (!calc) return NextResponse.json({ error: 'Clock out must be after clock in.' }, { status: 400 });
+    hours_worked = calc.hours;
+    days_worked  = calc.days;
+    clock_in     = calc.clock_in;
+    clock_out    = calc.clock_out;
+  } else {
+    return NextResponse.json({ error: 'Provide work_hours or clock_in/clock_out.' }, { status: 400 });
+  }
+
+  // Detect rework
   let is_rework = false;
   if (body.project_id) {
     const { data: proj } = await supabase.from('projects').select('status').eq('id', body.project_id).single();
     if (proj?.status === 'completed') {
       is_rework = true;
       if (!body.notes?.trim()) {
-        return NextResponse.json({ error: 'Rework remark is required for completed projects.' }, { status: 400 });
+        return NextResponse.json({ error: 'Rework remark required for completed projects.' }, { status: 400 });
       }
     }
   }
 
-  // Calculate site bonus: RM10 if site_clean AND hours >= 8
-  const site_clean = body.site_clean === true;
-  const site_bonus = (site_clean && calc.hours >= 8) ? 10.00 : 0;
-
-  const inserted: unknown[] = [], skipped: string[] = [];
+  const inserted: unknown[] = [];
+  const skipped: string[] = [];
   for (const employee_id of ids) {
     const { data, error } = await supabase.from('hr_attendance').insert({
-      employee_id, project_id: body.project_id || null,
-      work_date: body.work_date, clock_in: calc.clock_in, clock_out: calc.clock_out,
-      hours_worked: calc.hours, days_worked: calc.days,
-      notes: body.notes?.trim() || null,
+      employee_id,
+      project_id:           body.project_id || null,
+      work_date:            body.work_date,
+      clock_in,
+      clock_out,
+      hours_worked,
+      days_worked,
+      ot_hours,
+      notes:                body.notes?.trim() || null,
       is_rework,
-      status: 'pending',
-      submitted_by: user.id,
-      site_clean,
-      site_bonus,
+      status:               'pending',
+      submitted_by:         user.id,
+      site_clean:           false,
+      site_bonus:           0,
+      check_in_photo_url:   body.check_in_photo_url  || null,
+      check_out_photo_url:  body.check_out_photo_url || null,
+      site_photo_front_url: body.site_photo_front_url || null,
+      site_photo_back_url:  body.site_photo_back_url  || null,
+      site_photo_store_url: body.site_photo_store_url || null,
     }).select().single();
     if (error) {
       if (error.code === '23505') skipped.push(employee_id);

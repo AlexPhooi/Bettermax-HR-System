@@ -13,11 +13,14 @@ const ADMIN_NAV = [
 ];
 
 const LEADER_NAV = [
+  { href: '/',            label: 'Dashboard' },
   { href: '/attendance',  label: 'Attendance' },
-  { href: '/projects',    label: 'Projects' },
+  { href: '/my-salary',   label: 'My Salary' },
+  { href: '/my-profile',  label: 'My Profile' },
 ];
 
 const WORKER_NAV = [
+  { href: '/',              label: 'Dashboard' },
   { href: '/my-attendance', label: 'My Attendance' },
   { href: '/my-salary',     label: 'My Salary' },
   { href: '/my-profile',    label: 'My Profile' },
@@ -40,7 +43,7 @@ export default function Navbar() {
   const [pendingCount, setPendingCount] = useState(0);
   const bellRef = useRef<HTMLDivElement>(null);
 
-  const isAdmin  = role === 'admin';
+  const isAdmin  = role === 'admin' || role === 'owner';
   const isWorker = role === 'worker';
   const navLinks = isAdmin ? ADMIN_NAV : isWorker ? WORKER_NAV : LEADER_NAV;
 

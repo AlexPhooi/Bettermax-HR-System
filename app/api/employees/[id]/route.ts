@@ -1,27 +1,58 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getUser } from '@/lib/auth';
+import { getUser, isManager } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 
+// Full update (admin/owner only)
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
-  if (!await getUser(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const user = await getUser(req);
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!isManager(user.role)) return NextResponse.json({ error: 'Admin/Owner only.' }, { status: 403 });
+
   const body = await req.json();
   if (!body.full_name?.trim()) return NextResponse.json({ error: 'Full name is required.' }, { status: 400 });
-  if (!body.daily_rate || Number(body.daily_rate) <= 0)
-    return NextResponse.json({ error: 'Valid daily rate is required.' }, { status: 400 });
+
   const { data, error } = await supabase.from('employees').update({
-    full_name: body.full_name.trim(),
-    passport_no: body.passport_no?.trim() || null,
-    permit_no: body.permit_no?.trim() || null,
-    permit_expire: body.permit_expire || null,
-    phone: body.phone?.trim() || null,
-    daily_rate: Number(body.daily_rate),
-    rank: body.rank || null,
-    bank_name: body.bank_name || null,
-    bank_account: body.bank_account?.trim() || null,
+    full_name:       body.full_name.trim(),
+    passport_no:     body.passport_no?.trim()    || null,
+    permit_no:       body.permit_no?.trim()       || null,
+    permit_expire:   body.permit_expire           || null,
+    phone:           body.phone?.trim()           || null,
+    daily_rate:      Number(body.daily_rate)      || 0,
+    rank:            body.rank                    || null,
+    bank_name:       body.bank_name               || null,
+    bank_account:    body.bank_account?.trim()    || null,
     passport_doc_url: body.passport_doc_url?.trim() || null,
     permit_doc_url:   body.permit_doc_url?.trim()   || null,
-    status: body.status || 'active',
+    avatar_url:      body.avatar_url?.trim()      || null,
+    status:          body.status                  || 'active',
   }).eq('id', params.id).select().single();
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json(data);
+}
+
+// Self-update (worker / leader can update own limited fields)
+export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+  const user = await getUser(req);
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  // Non-managers can only edit their own record
+  if (!isManager(user.role) && user.employee_id !== params.id) {
+    return NextResponse.json({ error: 'Forbidden.' }, { status: 403 });
+  }
+
+  const body = await req.json();
+
+  // Workers/leaders may only update limited personal fields
+  const allowed: Record<string, unknown> = {};
+  if (body.phone        !== undefined) allowed.phone        = body.phone?.trim() || null;
+  if (body.bank_name    !== undefined) allowed.bank_name    = body.bank_name     || null;
+  if (body.bank_account !== undefined) allowed.bank_account = body.bank_account?.trim() || null;
+  if (body.avatar_url   !== undefined) allowed.avatar_url   = body.avatar_url?.trim()   || null;
+
+  if (Object.keys(allowed).length === 0)
+    return NextResponse.json({ error: 'No updatable fields provided.' }, { status: 400 });
+
+  const { data, error } = await supabase.from('employees').update(allowed).eq('id', params.id).select().single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(data);
 }
