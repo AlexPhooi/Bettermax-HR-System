@@ -138,7 +138,7 @@ const EMPTY_EMP = {
 
 // ── Main Page ──────────────────────────────────────────────────────────
 export default function StaffPage() {
-  const { role: myRole, loaded } = useRole();
+  const { role: myRole, username: myUsername, loaded } = useRole();
   const router = useRouter();
   const canManage = myRole === 'owner' || myRole === 'admin';
 
@@ -584,9 +584,14 @@ export default function StaffPage() {
                               <button className="btn btn-outline btn-sm" onClick={() => openEditAcc(row)}>
                                 🔑 Account
                               </button>
-                              <button className="btn btn-danger btn-sm" onClick={() => handleDeleteAcc(row.user_id!, row.username!)}>
-                                Del
-                              </button>
+                              {/* Hide Del if: self, or admin trying to delete admin/owner, or owner trying to delete another owner */}
+                              {row.username !== myUsername &&
+                               !(myRole === 'admin' && (row.role === 'admin' || row.role === 'owner')) &&
+                               !(myRole === 'owner' && row.role === 'owner') && (
+                                <button className="btn btn-danger btn-sm" onClick={() => handleDeleteAcc(row.user_id!, row.username!)}>
+                                  Del
+                                </button>
+                              )}
                             </>
                           ) : (
                             row.employee_id && (
