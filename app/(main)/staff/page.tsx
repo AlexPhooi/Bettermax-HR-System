@@ -710,7 +710,7 @@ export default function StaffPage() {
                 <select className="form-control" required value={empForm.rank}
                   onChange={e => handleRankChange(e.target.value, setEmpForm as never)}>
                   <option value="">Select rank…</option>
-                  {RANKS.map(r => <option key={r} value={r}>{r} — RM {RANK_RATES[r]}/day</option>)}
+                  {RANKS.map(r => <option key={r} value={r}>{r}</option>)}
                 </select>
               </div>
               <div>
@@ -777,7 +777,7 @@ export default function StaffPage() {
               <select className="form-control" required value={editEmpForm.rank}
                 onChange={e => handleRankChange(e.target.value, setEditEmpForm as never)}>
                 <option value="">Select rank…</option>
-                {RANKS.map(r => <option key={r} value={r}>{r} — RM {RANK_RATES[r]}/day</option>)}
+                {RANKS.map(r => <option key={r} value={r}>{r}</option>)}
               </select>
             </div>
             <div>
