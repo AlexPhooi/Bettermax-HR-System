@@ -1,7 +1,6 @@
 'use client';
 import { useRef, useState } from 'react';
 import { formatRM, formatDate, getCurrentMonth } from '@/lib/utils';
-import SavingsCalculator from '@/components/SavingsCalculator';
 
 interface SalaryRow {
   employee_id: string;
@@ -372,33 +371,22 @@ export default function SalaryPage() {
                     <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
                       🧹 Saving Account
                     </div>
-
-                    {/* Quick balance summary */}
-                    <div className="flex gap-3 mb-4 text-sm">
-                      <div className="flex-1 rounded-lg p-2.5 text-center"
-                        style={{ background: 'rgba(30,58,95,0.07)', border: '1px solid rgba(30,58,95,0.1)' }}>
-                        <div className="text-xs text-gray-400 mb-0.5">This Month</div>
-                        <div className={`font-bold ${row.total_site_bonus > 0 ? 'text-green-600' : 'text-gray-400'}`}>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">This Month Bonus</span>
+                        <span className={row.total_site_bonus > 0 ? 'font-medium text-green-600' : 'text-gray-400'}>
                           {row.total_site_bonus > 0 ? `+${formatRM(row.total_site_bonus)}` : '-'}
-                        </div>
+                        </span>
                       </div>
-                      <div className="flex-1 rounded-lg p-2.5 text-center"
-                        style={{ background: 'rgba(30,58,95,0.07)', border: '1px solid rgba(30,58,95,0.1)' }}>
-                        <div className="text-xs text-gray-400 mb-0.5">Balance</div>
-                        <div className="font-bold text-gray-700">{formatRM(row.site_bonus_balance)}</div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Current Balance</span>
+                        <span className="font-medium">{formatRM(row.site_bonus_balance)}</span>
                       </div>
-                      <div className="flex-1 rounded-lg p-2.5 text-center"
-                        style={{ background: 'rgba(22,163,74,0.08)', border: '1px solid rgba(22,163,74,0.2)' }}>
-                        <div className="text-xs text-green-600 mb-0.5">New Balance</div>
-                        <div className="font-bold text-green-700">{formatRM(newBalance)}</div>
+                      <div className="flex justify-between font-bold border-t border-gray-200 pt-2">
+                        <span>New Balance</span>
+                        <span className="text-green-700">{formatRM(newBalance)}</span>
                       </div>
                     </div>
-
-                    {/* Growth calculator */}
-                    <SavingsCalculator
-                      defaultMonthly={row.total_site_bonus > 0 ? row.total_site_bonus : 10}
-                      currentBalance={newBalance}
-                    />
                   </div>
                 </div>
               </div>
