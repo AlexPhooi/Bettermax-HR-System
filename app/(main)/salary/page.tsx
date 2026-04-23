@@ -81,7 +81,37 @@ export default function SalaryPage() {
 
   return (
     <div className="p-4 md:p-6 max-w-7xl mx-auto">
-      <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
+
+      {/* ── Print-only styles: suppress browser header/footer, inject letterhead ── */}
+      <style>{`
+        @media print {
+          @page { margin: 0; size: A4 portrait; }
+          body > * { display: none !important; }
+          #salary-print-root { display: block !important; }
+          #salary-print-root .no-print { display: none !important; }
+        }
+        #salary-print-root { display: contents; }
+      `}</style>
+
+      <div id="salary-print-root">
+
+        {/* ── Letterhead — hidden on screen, first thing printed ── */}
+        <div className="hidden print:block px-10 pt-8 pb-4 border-b-2 border-gray-800 mb-6">
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-2xl font-extrabold text-gray-900 tracking-tight">🏢 Bettermax Enterprise HR</p>
+              <p className="text-sm text-gray-500 mt-0.5">Internal Salary Report</p>
+            </div>
+            <div className="text-right text-sm text-gray-500">
+              <p><strong>Month:</strong> {result?.month || month}</p>
+              <p><strong>Generated:</strong> {new Date().toLocaleDateString('en-MY', { day: '2-digit', month: 'long', year: 'numeric' })}</p>
+              {result && <p><strong>Payment Due:</strong> {formatDate(result.payment_due)}</p>}
+              {isFinalized && <p className="text-green-700 font-semibold mt-0.5">✓ Finalized</p>}
+            </div>
+          </div>
+        </div>
+
+      <div className="flex items-center justify-between mb-6 flex-wrap gap-3 no-print">
         <h1 className="text-2xl font-bold text-primary">Salary Calculator</h1>
         <div className="flex gap-2 flex-wrap">
           {calculated && !isFinalized && (
@@ -98,9 +128,9 @@ export default function SalaryPage() {
         </div>
       </div>
 
-      {alertMsg && <div className={`alert alert-${alertType}`}>{alertMsg}</div>}
+      {alertMsg && <div className={`alert alert-${alertType} no-print`}>{alertMsg}</div>}
 
-      <div className="card p-4 mb-4">
+      <div className="card p-4 mb-4 no-print">
         <div className="flex items-end gap-3 flex-wrap">
           <div>
             <label className="form-label">Salary Month</label>
@@ -115,14 +145,14 @@ export default function SalaryPage() {
       </div>
 
       {result && (
-        <div className="alert alert-warning mb-4">
+        <div className="alert alert-warning mb-4 no-print">
           <strong>Payment Due:</strong> {formatDate(result.payment_due)} (7th of following month)
           {isFinalized && <span className="ml-3 text-green-700 font-semibold">— This month has been finalized</span>}
         </div>
       )}
 
       {loading && (
-        <div className="card animate-pulse">
+        <div className="card animate-pulse no-print">
           <div className="space-y-3">
             {Array(5).fill(0).map((_, i) => (
               <div key={i} className="h-10 bg-gray-100 rounded" />
@@ -132,7 +162,7 @@ export default function SalaryPage() {
       )}
 
       {result && !loading && (
-        <div className="card p-0 overflow-hidden">
+        <div className="card p-0 overflow-hidden print:shadow-none print:border-0 print:px-10">
           <div className="px-6 py-4 border-b border-bg flex items-center justify-between">
             <span className="text-sm font-semibold text-primary">
               {result.data.length} employee{result.data.length !== 1 ? 's' : ''} — {result.month}
@@ -209,10 +239,12 @@ export default function SalaryPage() {
       )}
 
       {!loading && !result && (
-        <div className="card text-center py-12 text-gray-400">
+        <div className="card text-center py-12 text-gray-400 no-print">
           Select a month and click Calculate to generate the salary report.
         </div>
       )}
+
+      </div>{/* end #salary-print-root */}
     </div>
   );
 }
