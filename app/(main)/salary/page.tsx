@@ -14,7 +14,7 @@ interface SalaryRow {
   total_advances: number;
   net_salary: number;
   attendance_days: number;
-  site_bonus_balance: number;   // current balance (before this month)
+  site_bonus_balance: number;
   bank_name: string | null;
   bank_account: string | null;
 }
@@ -39,7 +39,6 @@ export default function SalaryPage() {
   const [alertMsg, setAlertMsg]       = useState('');
   const [alertType, setAlertType]     = useState<'success' | 'danger' | 'warning'>('success');
   const [finalizing, setFinalizing]   = useState(false);
-  // Map: employee_id → salary record (id + payment_slip_url)
   const [recordMap, setRecordMap]     = useState<Record<string, SalaryRecord>>({});
   const [uploading, setUploading]     = useState<Record<string, boolean>>({});
   const fileRefs = useRef<Record<string, HTMLInputElement | null>>({});
@@ -58,7 +57,6 @@ export default function SalaryPage() {
       if (!res.ok) { showAlert(data.error, 'danger'); return; }
       setResult(data);
       setCalculated(true);
-
       const recRes = await fetch(`/api/salary/records?month=${month}`);
       const recData = await recRes.json();
       if (Array.isArray(recData) && recData.length > 0) {
@@ -84,7 +82,6 @@ export default function SalaryPage() {
       if (!res.ok) { showAlert(data.error, 'danger'); return; }
       showAlert(`Salary for ${result.month} finalized! Site bonus balances updated.`);
       setIsFinalized(true);
-      // Refresh record map so slip uploads work
       const recRes = await fetch(`/api/salary/records?month=${result.month}`);
       const recData = await recRes.json();
       if (Array.isArray(recData)) {
@@ -106,7 +103,6 @@ export default function SalaryPage() {
       const upRes = await fetch('/api/upload', { method: 'POST', body: form });
       const upData = await upRes.json();
       if (!upRes.ok) { showAlert(upData.error || 'Upload failed.', 'danger'); return; }
-
       const patchRes = await fetch(`/api/salary/records/${rec.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -129,22 +125,23 @@ export default function SalaryPage() {
     net_salary:       result.data.reduce((s, r) => s + r.net_salary,       0),
   } : null;
 
+  const hasSiteBonus = result?.data.some(r => r.total_site_bonus > 0);
+
   return (
-    <div className="p-4 md:p-6 max-w-5xl mx-auto">
+    <div className="p-4 md:p-6 max-w-7xl mx-auto">
 
       {/* ── Print styles ── */}
       <style>{`
         @media print {
-          @page { margin: 1.2cm 1.5cm; size: A4 portrait; }
+          @page { margin: 1.2cm 1.5cm; size: A4 landscape; }
           nav, .no-print { display: none !important; }
           .print-letterhead { display: block !important; }
-          .salary-card { break-inside: avoid; page-break-inside: avoid; }
           body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         }
         .print-letterhead { display: none; }
       `}</style>
 
-      {/* ── Letterhead — print only ── */}
+      {/* ── Letterhead (print only) ── */}
       <div className="print-letterhead pb-4 mb-5" style={{ borderBottom: '2px solid #1e3a5f' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
@@ -170,9 +167,7 @@ export default function SalaryPage() {
             </button>
           )}
           {isFinalized && (
-            <span className="badge bg-green-100 text-green-700 px-3 py-1.5 text-sm font-semibold">
-              ✓ Finalized
-            </span>
+            <span className="badge bg-green-100 text-green-700 px-3 py-1.5 text-sm font-semibold">✓ Finalized</span>
           )}
           <button className="btn btn-secondary" onClick={() => window.print()}>🖨 Print</button>
         </div>
@@ -198,200 +193,141 @@ export default function SalaryPage() {
       {result && (
         <div className="alert alert-warning mb-4 no-print">
           <strong>Payment Due:</strong> {formatDate(result.payment_due)} (7th of following month)
-          {isFinalized && <span className="ml-3 text-green-700 font-semibold">— Finalized</span>}
+          {isFinalized && <span className="ml-3 text-green-700 font-semibold">— This month has been finalized</span>}
         </div>
       )}
 
       {loading && (
         <div className="card animate-pulse no-print">
           <div className="space-y-3">
-            {Array(5).fill(0).map((_, i) => <div key={i} className="h-16 bg-gray-100 rounded" />)}
+            {Array(5).fill(0).map((_, i) => <div key={i} className="h-10 bg-gray-100 rounded" />)}
           </div>
         </div>
       )}
 
-      {/* ── Totals summary bar ── */}
-      {result && !loading && totals && (
-        <div className="card p-4 mb-4 bg-primary/5">
-          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-            {result.data.length} employee{result.data.length !== 1 ? 's' : ''} — {result.month}
-          </div>
-          <div className="grid grid-cols-3 md:grid-cols-6 gap-3 text-center">
-            <div>
-              <div className="text-xs text-gray-400">Days</div>
-              <div className="font-bold text-sm">{totals.total_days.toFixed(2)}</div>
-            </div>
-            <div>
-              <div className="text-xs text-gray-400">Base Pay</div>
-              <div className="font-bold text-sm">{formatRM(totals.base_salary)}</div>
-            </div>
-            <div>
-              <div className="text-xs text-green-600">Site Bonus</div>
-              <div className="font-bold text-sm text-green-600">+{formatRM(totals.total_site_bonus)}</div>
-            </div>
-            <div>
-              <div className="text-xs text-gray-400">Gross</div>
-              <div className="font-bold text-sm text-accent">{formatRM(totals.gross_salary)}</div>
-            </div>
-            <div>
-              <div className="text-xs text-red-400">Advances</div>
-              <div className="font-bold text-sm text-danger">({formatRM(totals.total_advances)})</div>
-            </div>
-            <div>
-              <div className="text-xs text-gray-400">Net Total</div>
-              <div className="font-bold text-base text-accent">{formatRM(totals.net_salary)}</div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Per-employee cards ── */}
+      {/* ── Table ── */}
       {result && !loading && (
-        <div className="space-y-4">
-          {result.data.map(row => {
-            const rec = recordMap[row.employee_id];
-            const newBalance = Math.round((row.site_bonus_balance + row.total_site_bonus) * 100) / 100;
-            const isUploading = uploading[row.employee_id];
-
-            return (
-              <div key={row.employee_id} className="salary-card card p-0 overflow-hidden">
-
-                {/* ── Card Header: Name / Rate / Gong ── */}
-                <div className="flex items-center justify-between px-5 py-3 bg-primary/8"
-                  style={{ background: 'rgba(30,58,95,0.06)' }}>
-                  <div className="flex items-center gap-4 flex-wrap">
-                    <span className="font-bold text-primary text-base">{row.full_name}</span>
-                    <span className="text-sm text-gray-500">
-                      <span className="font-medium text-gray-700">{formatRM(row.daily_rate)}</span>
-                      <span className="text-gray-400">/day</span>
-                    </span>
-                  </div>
-                  {/* Gong indicator */}
-                  <div className="text-right">
-                    <span className="text-sm font-semibold text-primary">
-                      {row.total_days.toFixed(2)} 工
-                    </span>
-                    {row.total_ot_hours > 0 && (
-                      <span className="ml-2 text-xs text-orange-500 font-semibold">
-                        +{row.total_ot_hours.toFixed(1)}h OT
-                      </span>
-                    )}
-                    <div className="text-xs text-gray-400">{row.attendance_days} session{row.attendance_days !== 1 ? 's' : ''}</div>
-                  </div>
-                </div>
-
-                {/* ── Two sections ── */}
-                <div className="grid grid-cols-1 divide-y divide-gray-100">
-
-                  {/* Monthly Salary */}
-                  <div className="p-4">
-                    <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
-                      💰 Monthly Salary
-                    </div>
-                    <div className="space-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-gray-500">Base Pay</span>
-                        <span className="font-medium">{formatRM(row.base_salary)}</span>
-                      </div>
-                      {row.total_site_bonus > 0 && (
-                        <div className="flex justify-between">
-                          <span className="text-gray-500">🧹 Site Bonus</span>
-                          <span className="font-medium text-green-600">+{formatRM(row.total_site_bonus)}</span>
-                        </div>
-                      )}
-                      <div className="flex justify-between font-semibold border-t border-dashed border-gray-200 pt-2">
-                        <span className="text-gray-700">Gross</span>
-                        <span className="text-accent">{formatRM(row.gross_salary)}</span>
-                      </div>
-                      {row.total_advances > 0 && (
-                        <div className="flex justify-between">
-                          <span className="text-gray-500">Advance Deduction</span>
-                          <span className="text-danger">({formatRM(row.total_advances)})</span>
-                        </div>
-                      )}
-                      <div className="flex justify-between font-bold border-t border-gray-200 pt-2">
-                        <span>Net Salary</span>
-                        <span className={row.net_salary < 0 ? 'text-danger' : 'text-accent text-base'}>
-                          {formatRM(row.net_salary)}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Bank details */}
-                    {(row.bank_name || row.bank_account) && (
-                      <div className="mt-3 pt-3 border-t border-gray-100 text-xs text-gray-500">
-                        🏦 {row.bank_name && <span className="font-medium text-gray-700">{row.bank_name}</span>}
-                        {row.bank_account && <span className="ml-1 font-mono text-gray-600">{row.bank_account}</span>}
-                      </div>
-                    )}
-
-                    {/* Slip upload — only when finalized */}
-                    {isFinalized && rec && (
-                      <div className="mt-3 no-print">
-                        <input
-                          type="file"
-                          accept="image/*,.pdf"
-                          className="hidden"
+        <div className="card p-0 overflow-hidden print:shadow-none print:border-0">
+          <div className="px-6 py-4 border-b border-bg flex items-center justify-between">
+            <span className="text-sm font-semibold text-primary">
+              {result.data.length} employee{result.data.length !== 1 ? 's' : ''} — {result.month}
+            </span>
+            {hasSiteBonus && (
+              <span className="badge bg-green-100 text-green-700 text-xs">🧹 Site Bonus included</span>
+            )}
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr>
+                  <th className="table-th">Employee</th>
+                  <th className="table-th text-right">Days</th>
+                  <th className="table-th text-right">Rate</th>
+                  <th className="table-th text-right">Base Pay</th>
+                  <th className="table-th text-right">🧹 Site Bonus</th>
+                  <th className="table-th text-right">Gross</th>
+                  <th className="table-th text-right">Advances</th>
+                  <th className="table-th text-right">Net Salary</th>
+                  <th className="table-th text-center no-print">Slip</th>
+                </tr>
+              </thead>
+              <tbody>
+                {result.data.map(row => {
+                  const rec = recordMap[row.employee_id];
+                  const isUploading = uploading[row.employee_id];
+                  return (
+                    <tr key={row.employee_id} className="table-tr">
+                      <td className="table-td">
+                        <div className="font-medium">{row.full_name}</div>
+                        {(row.bank_name || row.bank_account) && (
+                          <div className="text-xs text-gray-400 mt-0.5">
+                            🏦 {row.bank_name} {row.bank_account}
+                          </div>
+                        )}
+                      </td>
+                      <td className="table-td text-right">
+                        <span className="text-gray-400 text-xs">({row.attendance_days}d /</span>
+                        <span className="font-semibold ml-0.5">{row.total_days.toFixed(4)}</span>
+                        <span className="text-gray-400 text-xs">)</span>
+                        {row.total_ot_hours > 0 && (
+                          <div className="text-xs text-orange-500">+{row.total_ot_hours.toFixed(1)}h OT</div>
+                        )}
+                      </td>
+                      <td className="table-td text-right">{formatRM(row.daily_rate)}</td>
+                      <td className="table-td text-right">{formatRM(row.base_salary)}</td>
+                      <td className="table-td text-right">
+                        {row.total_site_bonus > 0
+                          ? <span className="text-green-600 font-semibold">+{formatRM(row.total_site_bonus)}</span>
+                          : <span className="text-gray-400">-</span>}
+                      </td>
+                      <td className="table-td text-right text-accent font-semibold">{formatRM(row.gross_salary)}</td>
+                      <td className="table-td text-right">
+                        {row.total_advances > 0
+                          ? <span className="text-danger font-semibold">({formatRM(row.total_advances)})</span>
+                          : <span className="text-gray-400">-</span>}
+                      </td>
+                      <td className={`table-td text-right font-bold ${row.net_salary < 0 ? 'text-danger' : 'text-accent'}`}>
+                        {formatRM(row.net_salary)}
+                      </td>
+                      {/* Slip upload — only after finalize */}
+                      <td className="table-td text-center no-print">
+                        <input type="file" accept="image/*,.pdf" className="hidden"
                           ref={el => { fileRefs.current[row.employee_id] = el; }}
                           onChange={e => {
                             const file = e.target.files?.[0];
                             if (file) handleSlipUpload(row.employee_id, file);
                             e.target.value = '';
-                          }}
-                        />
-                        {rec.payment_slip_url ? (
-                          <div className="flex items-center gap-2">
-                            <a href={rec.payment_slip_url} target="_blank" rel="noopener noreferrer"
-                              className="text-xs text-blue-600 underline">
-                              📄 View Slip
-                            </a>
-                            <button
-                              className="text-xs text-gray-400 hover:text-gray-600"
+                          }} />
+                        {isFinalized && rec ? (
+                          rec.payment_slip_url ? (
+                            <div className="flex items-center justify-center gap-1">
+                              <a href={rec.payment_slip_url} target="_blank" rel="noopener noreferrer"
+                                className="text-xs text-blue-600 underline">📄</a>
+                              <button className="text-xs text-gray-400 hover:text-gray-600"
+                                onClick={() => fileRefs.current[row.employee_id]?.click()}
+                                disabled={isUploading}>
+                                {isUploading ? '…' : '↺'}
+                              </button>
+                            </div>
+                          ) : (
+                            <button className="text-xs text-gray-400 hover:text-primary"
                               onClick={() => fileRefs.current[row.employee_id]?.click()}
                               disabled={isUploading}
-                            >
-                              {isUploading ? 'Uploading…' : '↺ Replace'}
+                              title="Upload payment slip">
+                              {isUploading ? '…' : '📎'}
                             </button>
-                          </div>
+                          )
                         ) : (
-                          <button
-                            className="btn btn-secondary text-xs py-1 px-3"
-                            onClick={() => fileRefs.current[row.employee_id]?.click()}
-                            disabled={isUploading}
-                          >
-                            {isUploading ? 'Uploading…' : '📎 Upload Payment Slip'}
-                          </button>
+                          <span className="text-gray-300 text-xs">—</span>
                         )}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Saving Account */}
-                  <div className="p-4">
-                    <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
-                      🧹 Saving Account
-                    </div>
-                    <div className="space-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-gray-500">This Month Bonus</span>
-                        <span className={row.total_site_bonus > 0 ? 'font-medium text-green-600' : 'text-gray-400'}>
-                          {row.total_site_bonus > 0 ? `+${formatRM(row.total_site_bonus)}` : '-'}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-500">Current Balance</span>
-                        <span className="font-medium">{formatRM(row.site_bonus_balance)}</span>
-                      </div>
-                      <div className="flex justify-between font-bold border-t border-gray-200 pt-2">
-                        <span>New Balance</span>
-                        <span className="text-green-700">{formatRM(newBalance)}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              {totals && (
+                <tfoot>
+                  <tr className="bg-primary/5 font-bold">
+                    <td className="table-td">TOTAL</td>
+                    <td className="table-td text-right">{totals.total_days.toFixed(4)}</td>
+                    <td className="table-td" />
+                    <td className="table-td text-right">{formatRM(totals.base_salary)}</td>
+                    <td className="table-td text-right text-green-600">
+                      {totals.total_site_bonus > 0 ? `+${formatRM(totals.total_site_bonus)}` : '-'}
+                    </td>
+                    <td className="table-td text-right text-accent">{formatRM(totals.gross_salary)}</td>
+                    <td className="table-td text-right text-danger">
+                      {totals.total_advances > 0 ? `(${formatRM(totals.total_advances)})` : '-'}
+                    </td>
+                    <td className={`table-td text-right ${totals.net_salary < 0 ? 'text-danger' : 'text-accent'}`}>
+                      {formatRM(totals.net_salary)}
+                    </td>
+                    <td className="table-td no-print" />
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
         </div>
       )}
 
