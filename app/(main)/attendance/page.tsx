@@ -48,7 +48,10 @@ interface AttGroup {
   submitted_by: string | null;
 }
 
-interface Employee { id: string; full_name: string; status: string; }
+interface Employee {
+  id: string; full_name: string; status: string;
+  bank_name: string | null; bank_account: string | null;
+}
 interface Project  { id: string; name: string; code: string | null; status: string; }
 interface Advance  { id: string; employee_id: string; advance_date: string | null; amount: number; }
 
@@ -581,6 +584,21 @@ function AdminView() {
   const [addEmpSearch, setAddEmpSearch]   = useState('');
   const [addSaving, setAddSaving]         = useState(false);
 
+  // Add Advance modal
+  const [showAdvModal, setShowAdvModal]   = useState(false);
+  const [advSelectedIds, setAdvSelectedIds] = useState<Set<string>>(new Set());
+  const [advEmpSearch, setAdvEmpSearch]   = useState('');
+  const [advSaving, setAdvSaving]         = useState(false);
+  const [advSlipUploading, setAdvSlipUploading] = useState(false);
+  const advSlipRef = useRef<HTMLInputElement>(null);
+  const [advForm, setAdvForm] = useState({
+    advance_date: today(), month: getCurrentMonth().substring(0, 7),
+    amount: '', detail_type: 'makan', detail_note: '',
+    pay_by: 'cash',
+    bank_name: '', account_name: '', account_no: '', bank_slip_url: '',
+    bank_search_id: '',
+  });
+
   function showAlert(msg: string, type: 'success' | 'danger' | 'info' = 'success') {
     setAlertMsg(msg); setAlertType(type); setTimeout(() => setAlertMsg(''), 5000);
   }
@@ -741,29 +759,83 @@ function AdminView() {
     } finally { setAddSaving(false); }
   }
 
+  async function handleAddAdvance(e: React.FormEvent) {
+    e.preventDefault();
+    if (advSelectedIds.size === 0) { showAlert('Select at least one employee.', 'danger'); return; }
+    if (!advForm.amount || Number(advForm.amount) <= 0) { showAlert('Enter a valid amount.', 'danger'); return; }
+    setAdvSaving(true);
+    try {
+      const notes = advForm.detail_type === 'other' ? advForm.detail_note.trim() : advForm.detail_type;
+      const res = await fetch('/api/advances', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          employee_ids:  Array.from(advSelectedIds),
+          advance_date:  advForm.advance_date || null,
+          month:         advForm.month,
+          amount:        Number(advForm.amount),
+          notes,
+          detail_type:   advForm.detail_type,
+          pay_by:        advForm.pay_by,
+          bank_name:     advForm.bank_name     || null,
+          account_name:  advForm.account_name  || null,
+          account_no:    advForm.account_no    || null,
+          bank_slip_url: advForm.bank_slip_url || null,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) { showAlert(data.error || 'Failed.', 'danger'); return; }
+      const count = data.inserted?.length || 0;
+      showAlert(`✅ Advance recorded for ${count} employee${count !== 1 ? 's' : ''}.`);
+      setShowAdvModal(false);
+      setAdvSelectedIds(new Set()); setAdvEmpSearch('');
+      setAdvForm({ advance_date: today(), month: getCurrentMonth().substring(0, 7), amount: '', detail_type: 'makan', detail_note: '', pay_by: 'cash', bank_name: '', account_name: '', account_no: '', bank_slip_url: '', bank_search_id: '' });
+      loadData();
+    } finally { setAdvSaving(false); }
+  }
+
+  async function uploadAdvSlip(file: File) {
+    setAdvSlipUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file); fd.append('type', 'bank_slip');
+      const res  = await fetch('/api/upload', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (res.ok && data.url) setAdvForm(f => ({ ...f, bank_slip_url: data.url }));
+      else showAlert(data.error || 'Upload failed.', 'danger');
+    } finally { setAdvSlipUploading(false); if (advSlipRef.current) advSlipRef.current.value = ''; }
+  }
+
   const pendingCount = groups.filter(g => g.status === 'pending').length;
 
   return (
     <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-5">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-primary">Attendance</h1>
+          <h1 className="text-2xl font-bold text-primary">Record</h1>
           {pendingCount > 0 && (
             <span className="badge bg-yellow-100 text-yellow-700 text-sm px-3 py-1 mt-1 inline-block">
               🟡 {pendingCount} session{pendingCount !== 1 ? 's' : ''} pending approval
             </span>
           )}
         </div>
-        <button
-          className="btn btn-primary"
-          onClick={() => {
+        <div className="flex gap-2">
+          <button className="btn btn-primary" onClick={() => {
             setAddForm({ ...EMPTY_ADD });
             setAddSelectedIds(new Set());
             setAddEmpSearch('');
             setShowAddModal(true);
           }}>
-          + Add Attendance
-        </button>
+            + Add Attendance
+          </button>
+          <button className="btn bg-orange-500 hover:bg-orange-600 text-white" onClick={() => {
+            setAdvSelectedIds(new Set()); setAdvEmpSearch('');
+            setAdvForm({ advance_date: today(), month: getCurrentMonth().substring(0, 7), amount: '', detail_type: 'makan', detail_note: '', pay_by: 'cash', bank_name: '', account_name: '', account_no: '', bank_slip_url: '', bank_search_id: '' });
+            setShowAdvModal(true);
+          }}>
+            + Add Advance
+          </button>
+        </div>
       </div>
 
       {alertMsg && <div className={`alert alert-${alertType}`}>{alertMsg}</div>}
@@ -1159,6 +1231,204 @@ function AdminView() {
                 {addSaving ? 'Saving…' : `+ Add ${addSelectedIds.size > 0 ? addSelectedIds.size + ' ' : ''}Record${addSelectedIds.size !== 1 ? 's' : ''}`}
               </button>
               <button type="button" className="btn btn-secondary" onClick={() => setShowAddModal(false)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Add Advance Modal ──────────────────────────────────────────── */}
+      {showAdvModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col">
+
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+              <h2 className="text-lg font-bold text-primary">+ Add Advance</h2>
+              <button onClick={() => setShowAdvModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+            </div>
+
+            <form onSubmit={handleAddAdvance} className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+
+              {/* Date + Salary Month */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="form-label">Date *</label>
+                  <input type="date" className="form-control" required
+                    value={advForm.advance_date}
+                    onChange={e => setAdvForm(f => ({ ...f, advance_date: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="form-label">Deduct from Month *</label>
+                  <input type="month" className="form-control" required
+                    value={advForm.month}
+                    onChange={e => setAdvForm(f => ({ ...f, month: e.target.value }))} />
+                </div>
+              </div>
+
+              {/* Staff multi-select */}
+              <div>
+                <label className="form-label">
+                  Staff *
+                  <span className="ml-2 text-primary font-bold">{advSelectedIds.size} selected</span>
+                </label>
+                <input className="form-control mb-2" placeholder="Search staff…"
+                  value={advEmpSearch} onChange={e => setAdvEmpSearch(e.target.value)} />
+                <div className="border border-gray-200 rounded-lg max-h-40 overflow-y-auto divide-y divide-gray-100">
+                  {empList
+                    .filter(emp => emp.full_name.toLowerCase().includes(advEmpSearch.toLowerCase()))
+                    .map(emp => (
+                      <label key={emp.id}
+                        className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-gray-50 ${advSelectedIds.has(emp.id) ? 'bg-primary/5' : ''}`}>
+                        <input type="checkbox"
+                          checked={advSelectedIds.has(emp.id)}
+                          onChange={e => {
+                            const next = new Set(advSelectedIds);
+                            e.target.checked ? next.add(emp.id) : next.delete(emp.id);
+                            setAdvSelectedIds(next);
+                          }}
+                          className="w-4 h-4 accent-primary" />
+                        <span className="text-sm font-medium text-gray-800 flex-1">{emp.full_name}</span>
+                        {emp.bank_name && <span className="text-xs text-gray-400">{emp.bank_name}</span>}
+                      </label>
+                    ))}
+                </div>
+                <div className="flex gap-2 mt-1.5">
+                  <button type="button" className="text-xs text-primary underline"
+                    onClick={() => setAdvSelectedIds(new Set(empList.map(e => e.id)))}>Select all</button>
+                  <span className="text-gray-300">|</span>
+                  <button type="button" className="text-xs text-gray-500 underline"
+                    onClick={() => setAdvSelectedIds(new Set())}>Clear</button>
+                </div>
+              </div>
+
+              {/* Amount */}
+              <div>
+                <label className="form-label">Amount (RM) *</label>
+                <input type="number" className="form-control" min="0.01" step="0.01" placeholder="0.00" required
+                  value={advForm.amount}
+                  onChange={e => setAdvForm(f => ({ ...f, amount: e.target.value }))} />
+              </div>
+
+              {/* Detail type */}
+              <div>
+                <label className="form-label">Detail</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {([['makan', '🍱', 'Makan'], ['pinjam', '💰', 'Pinjam'], ['other', '📝', 'Other']] as const).map(([val, icon, lbl]) => (
+                    <label key={val} className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border-2 cursor-pointer transition-colors
+                      ${advForm.detail_type === val ? 'border-primary bg-primary/5' : 'border-gray-200 hover:border-gray-300'}`}>
+                      <input type="radio" name="detail_type" value={val} className="sr-only"
+                        checked={advForm.detail_type === val}
+                        onChange={() => setAdvForm(f => ({ ...f, detail_type: val }))} />
+                      <span>{icon}</span>
+                      <span className="text-sm font-semibold">{lbl}</span>
+                    </label>
+                  ))}
+                </div>
+                {advForm.detail_type === 'other' && (
+                  <input className="form-control mt-2" placeholder="Describe reason…"
+                    value={advForm.detail_note}
+                    onChange={e => setAdvForm(f => ({ ...f, detail_note: e.target.value }))} />
+                )}
+              </div>
+
+              {/* Pay by */}
+              <div>
+                <label className="form-label">Pay By</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {([['cash', '💵', 'Cash'], ['transfer', '🏦', 'Transfer']] as const).map(([val, icon, lbl]) => (
+                    <label key={val} className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border-2 cursor-pointer transition-colors
+                      ${advForm.pay_by === val ? 'border-primary bg-primary/5' : 'border-gray-200 hover:border-gray-300'}`}>
+                      <input type="radio" name="pay_by" value={val} className="sr-only"
+                        checked={advForm.pay_by === val}
+                        onChange={() => setAdvForm(f => ({ ...f, pay_by: val }))} />
+                      <span>{icon}</span>
+                      <span className="text-sm font-semibold">{lbl}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Bank details — only if transfer */}
+              {advForm.pay_by === 'transfer' && (
+                <div className="rounded-xl border border-gray-200 p-4 space-y-3">
+                  <p className="text-xs font-semibold text-gray-600 uppercase tracking-wider">🏦 Bank Details</p>
+
+                  {/* Auto-fill from staff */}
+                  <div>
+                    <label className="form-label text-xs">Load from staff profile</label>
+                    <select className="form-control"
+                      value={advForm.bank_search_id}
+                      onChange={e => {
+                        const emp = empList.find(x => x.id === e.target.value);
+                        setAdvForm(f => ({
+                          ...f,
+                          bank_search_id: e.target.value,
+                          bank_name:    emp?.bank_name    || '',
+                          account_name: emp?.full_name    || '',
+                          account_no:   emp?.bank_account || '',
+                        }));
+                      }}>
+                      <option value="">— Select staff to auto-fill —</option>
+                      {empList.map(e => (
+                        <option key={e.id} value={e.id}>
+                          {e.full_name}{e.bank_name ? ` · ${e.bank_name}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="form-label text-xs">Bank</label>
+                      <input className="form-control" placeholder="e.g. Maybank"
+                        value={advForm.bank_name}
+                        onChange={e => setAdvForm(f => ({ ...f, bank_name: e.target.value, bank_search_id: '' }))} />
+                    </div>
+                    <div>
+                      <label className="form-label text-xs">Account Name</label>
+                      <input className="form-control" placeholder="Full name"
+                        value={advForm.account_name}
+                        onChange={e => setAdvForm(f => ({ ...f, account_name: e.target.value, bank_search_id: '' }))} />
+                    </div>
+                    <div>
+                      <label className="form-label text-xs">Account No.</label>
+                      <input className="form-control" placeholder="1234567890"
+                        value={advForm.account_no}
+                        onChange={e => setAdvForm(f => ({ ...f, account_no: e.target.value, bank_search_id: '' }))} />
+                    </div>
+                  </div>
+
+                  {/* Bank slip upload */}
+                  <div>
+                    <label className="form-label text-xs">Bank Slip <span className="text-gray-400 font-normal">(PDF or photo)</span></label>
+                    <input ref={advSlipRef} type="file" accept="image/*,.pdf" className="hidden"
+                      onChange={e => { const f = e.target.files?.[0]; if (f) uploadAdvSlip(f); }} />
+                    <div className="flex items-center gap-3">
+                      <button type="button" disabled={advSlipUploading}
+                        onClick={() => advSlipRef.current?.click()}
+                        className={`btn btn-sm ${advForm.bank_slip_url ? 'btn-outline' : 'btn-primary'}`}>
+                        {advSlipUploading ? '⏳ Uploading…' : advForm.bank_slip_url ? '↻ Replace Slip' : '📎 Upload Slip'}
+                      </button>
+                      {advForm.bank_slip_url && (
+                        <a href={advForm.bank_slip_url} target="_blank" rel="noopener noreferrer"
+                          className="text-xs text-blue-600 hover:underline">
+                          ✅ View uploaded slip →
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </form>
+
+            {/* Footer */}
+            <div className="flex gap-3 px-6 py-4 border-t border-gray-100">
+              <button type="button" disabled={advSaving}
+                onClick={handleAddAdvance}
+                className="btn btn-primary flex-1">
+                {advSaving ? 'Saving…' : `+ Record Advance${advSelectedIds.size > 1 ? ` (${advSelectedIds.size})` : ''}`}
+              </button>
+              <button type="button" className="btn btn-secondary" onClick={() => setShowAdvModal(false)}>Cancel</button>
             </div>
           </div>
         </div>
