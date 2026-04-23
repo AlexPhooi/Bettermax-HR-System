@@ -28,7 +28,6 @@ interface SalaryResult {
 
 interface SalaryRecord {
   id: string;
-  employee_id: string;
   payment_slip_url: string | null;
 }
 
