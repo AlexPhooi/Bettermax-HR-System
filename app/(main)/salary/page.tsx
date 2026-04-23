@@ -82,34 +82,32 @@ export default function SalaryPage() {
   return (
     <div className="p-4 md:p-6 max-w-7xl mx-auto">
 
-      {/* ── Print-only styles: suppress browser header/footer, inject letterhead ── */}
+      {/* ── Print styles ── */}
       <style>{`
         @media print {
-          @page { margin: 0; size: A4 portrait; }
-          body > * { display: none !important; }
-          #salary-print-root { display: block !important; }
-          #salary-print-root .no-print { display: none !important; }
+          @page { margin: 1.2cm 1.5cm; size: A4 portrait; }
+          nav, .no-print { display: none !important; }
+          .print-letterhead { display: block !important; }
+          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         }
-        #salary-print-root { display: contents; }
+        .print-letterhead { display: none; }
       `}</style>
 
-      <div id="salary-print-root">
-
-        {/* ── Letterhead — hidden on screen, first thing printed ── */}
-        <div className="hidden print:block px-10 pt-8 pb-4 border-b-2 border-gray-800 mb-6">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-2xl font-extrabold text-gray-900 tracking-tight">🏢 Bettermax Enterprise HR</p>
-              <p className="text-sm text-gray-500 mt-0.5">Internal Salary Report</p>
-            </div>
-            <div className="text-right text-sm text-gray-500">
-              <p><strong>Month:</strong> {result?.month || month}</p>
-              <p><strong>Generated:</strong> {new Date().toLocaleDateString('en-MY', { day: '2-digit', month: 'long', year: 'numeric' })}</p>
-              {result && <p><strong>Payment Due:</strong> {formatDate(result.payment_due)}</p>}
-              {isFinalized && <p className="text-green-700 font-semibold mt-0.5">✓ Finalized</p>}
-            </div>
+      {/* ── Letterhead — print only ── */}
+      <div className="print-letterhead pb-4 mb-5" style={{ borderBottom: '2px solid #1e3a5f' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div>
+            <div style={{ fontSize: '20px', fontWeight: 800, color: '#1e3a5f' }}>🏢 Bettermax Enterprise HR</div>
+            <div style={{ fontSize: '13px', color: '#6b7280', marginTop: '2px' }}>Internal Salary Report</div>
+          </div>
+          <div style={{ textAlign: 'right', fontSize: '12px', color: '#6b7280', lineHeight: '1.6' }}>
+            <div><strong>Month:</strong> {result?.month || month}</div>
+            <div><strong>Generated:</strong> {new Date().toLocaleDateString('en-MY', { day: '2-digit', month: 'long', year: 'numeric' })}</div>
+            {result && <div><strong>Payment Due:</strong> {formatDate(result.payment_due)}</div>}
+            {isFinalized && <div style={{ color: '#16a34a', fontWeight: 600 }}>✓ Finalized</div>}
           </div>
         </div>
+      </div>
 
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3 no-print">
         <h1 className="text-2xl font-bold text-primary">Salary Calculator</h1>
@@ -243,8 +241,6 @@ export default function SalaryPage() {
           Select a month and click Calculate to generate the salary report.
         </div>
       )}
-
-      </div>{/* end #salary-print-root */}
     </div>
   );
 }
