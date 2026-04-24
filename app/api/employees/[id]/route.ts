@@ -44,6 +44,9 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (body.bank_name    !== undefined) allowed.bank_name    = body.bank_name            || null;
   if (body.bank_account !== undefined) allowed.bank_account = body.bank_account?.trim() || null;
   if (body.avatar_url   !== undefined) allowed.avatar_url   = body.avatar_url?.trim()   || null;
+  // Manager-only: adjust site bonus balance (e.g. withdrawal)
+  if (body.site_bonus_balance !== undefined && isManager(user.role))
+    allowed.site_bonus_balance = Number(body.site_bonus_balance);
 
   if (Object.keys(allowed).length === 0)
     return NextResponse.json({ error: 'No updatable fields provided.' }, { status: 400 });

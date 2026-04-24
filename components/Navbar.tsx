@@ -9,6 +9,7 @@ const ADMIN_NAV = [
   { href: '/staff',      label: 'Staff' },
   { href: '/attendance', label: 'Attendance' },
   { href: '/salary',     label: 'Salary' },
+  { href: '/saving',     label: 'Saving' },
   { href: '/settings',   label: 'Settings' },
 ];
 
