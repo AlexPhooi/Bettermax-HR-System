@@ -1,6 +1,5 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { formatRM } from '@/lib/utils';
 
 interface SalaryRecord {
   id: string;
@@ -16,6 +15,15 @@ interface SalaryRecord {
   payment_slip_url: string | null;
 }
 
+function fmtRM(n: number) {
+  return 'RM ' + Number(n).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
+function monthLabel(ym: string) {
+  const [y, m] = ym.split('-');
+  return new Date(Number(y), Number(m) - 1).toLocaleString('en-MY', { month: 'long', year: 'numeric' });
+}
+
 export default function MySalaryPage() {
   const [records, setRecords] = useState<SalaryRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -27,136 +35,100 @@ export default function MySalaryPage() {
       .catch(() => setLoading(false));
   }, []);
 
-  // Sort ascending by month to compute running balance
-  const sorted = [...records].sort((a, b) => a.month.localeCompare(b.month));
-  // Build a running site bonus balance map: month → balance after that month
-  const runningBalance: Record<string, { before: number; after: number }> = {};
-  let accum = 0;
-  for (const rec of sorted) {
-    const bonus = Number(rec.total_site_bonus || 0);
-    runningBalance[rec.id] = { before: accum, after: accum + bonus };
-    accum += bonus;
-  }
-
-  // Display in descending order (newest first)
   const displayed = [...records].sort((a, b) => b.month.localeCompare(a.month));
 
   return (
-    <div className="p-4 md:p-6 max-w-2xl mx-auto">
+    <div className="p-4 md:p-6 max-w-lg mx-auto">
       <h1 className="text-2xl font-bold text-primary mb-6">My Salary</h1>
 
       {loading && (
-        <div className="space-y-4">
+        <div className="space-y-3">
           {Array(3).fill(0).map((_, i) => (
-            <div key={i} className="card animate-pulse h-40 bg-gray-100" />
+            <div key={i} className="card animate-pulse h-28 bg-gray-100" />
           ))}
         </div>
       )}
 
       {!loading && records.length === 0 && (
         <div className="card text-center py-12 text-gray-400">
-          No finalized salary records yet. Check back after the boss finalizes this month.
+          No salary records yet. Check back after your manager finalizes this month.
         </div>
       )}
 
       {!loading && displayed.length > 0 && (
-        <div className="space-y-4">
+        <div className="space-y-3">
           {displayed.map(rec => {
-            const bal = runningBalance[rec.id] ?? { before: 0, after: 0 };
+            const days      = Number(rec.total_days || 0);
+            const rate      = Number(rec.daily_rate || 0);
+            const basePay   = Number(rec.base_salary || 0);
+            const bonus     = Number(rec.total_site_bonus || 0);
+            const advances  = Number(rec.total_advances || 0);
+            const net       = Number(rec.net_salary || 0);
+            const isNeg     = net < 0;
+
             return (
               <div key={rec.id} className="card p-0 overflow-hidden">
 
-                {/* Month header */}
-                <div className="flex items-center justify-between px-5 py-3"
-                  style={{ background: 'rgba(30,58,95,0.06)', borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
+                {/* Header */}
+                <div className="flex items-center justify-between px-4 py-3 bg-primary/5 border-b border-gray-100">
                   <div>
-                    <span className="font-bold text-primary text-base">{rec.month}</span>
-                    <span className="ml-3 text-xs text-gray-400">
-                      {Number(rec.total_days).toFixed(2)} 工 · {formatRM(rec.daily_rate)}/day
+                    <p className="font-bold text-primary text-base">{monthLabel(rec.month)}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {days.toFixed(1)} days × {fmtRM(rate)}/day
+                    </p>
+                  </div>
+                  <span className={`badge text-xs ${rec.status === 'finalized' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                    {rec.status === 'finalized' ? '✓ Paid' : '⏳ Draft'}
+                  </span>
+                </div>
+
+                {/* Breakdown */}
+                <div className="px-4 py-3 space-y-2 text-sm">
+                  <div className="flex justify-between text-gray-500">
+                    <span>Base Pay ({days.toFixed(1)} days)</span>
+                    <span>{fmtRM(basePay)}</span>
+                  </div>
+
+                  {bonus > 0 && (
+                    <div className="flex justify-between text-green-600">
+                      <span>🧹 Site Bonus</span>
+                      <span>+ {fmtRM(bonus)}</span>
+                    </div>
+                  )}
+
+                  {advances > 0 && (
+                    <div className="flex justify-between text-red-500">
+                      <span>Advance Deduction</span>
+                      <span>- {fmtRM(advances)}</span>
+                    </div>
+                  )}
+
+                  {/* Net */}
+                  <div className="flex justify-between items-center border-t border-gray-100 pt-2 mt-1">
+                    <span className="font-bold text-gray-800">Net Salary</span>
+                    <span className={`text-xl font-extrabold ${isNeg ? 'text-red-500' : 'text-primary'}`}>
+                      {fmtRM(net)}
                     </span>
                   </div>
-                  <span className="badge bg-green-100 text-green-700 text-xs">✓ Finalized</span>
                 </div>
 
-                <div className="grid grid-cols-1 divide-y divide-gray-100">
-
-                  {/* Monthly Salary */}
-                  <div className="p-4">
-                    <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
-                      💰 Monthly Salary
-                    </div>
-                    <div className="space-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-gray-500">Base Pay</span>
-                        <span className="font-medium">{formatRM(Number(rec.base_salary || 0))}</span>
-                      </div>
-                      {Number(rec.total_site_bonus) > 0 && (
-                        <div className="flex justify-between">
-                          <span className="text-gray-500">🧹 Site Bonus</span>
-                          <span className="font-medium text-green-600">+{formatRM(Number(rec.total_site_bonus))}</span>
-                        </div>
-                      )}
-                      <div className="flex justify-between font-semibold border-t border-dashed border-gray-200 pt-2">
-                        <span className="text-gray-700">Gross</span>
-                        <span className="text-accent">{formatRM(Number(rec.gross_salary))}</span>
-                      </div>
-                      {Number(rec.total_advances) > 0 && (
-                        <div className="flex justify-between">
-                          <span className="text-gray-500">Advance Deduction</span>
-                          <span className="text-danger">({formatRM(Number(rec.total_advances))})</span>
-                        </div>
-                      )}
-                      <div className="flex justify-between font-bold border-t border-gray-200 pt-2">
-                        <span>Net Salary</span>
-                        <span className={`text-base ${Number(rec.net_salary) < 0 ? 'text-danger' : 'text-accent'}`}>
-                          {formatRM(Number(rec.net_salary))}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Payment slip */}
-                    {rec.payment_slip_url && (
-                      <div className="mt-3 pt-3 border-t border-gray-100">
-                        <a href={rec.payment_slip_url} target="_blank" rel="noopener noreferrer"
-                          className="text-xs text-blue-600 underline">
-                          📄 View Payment Slip
-                        </a>
-                      </div>
-                    )}
+                {/* Payment slip */}
+                {rec.payment_slip_url && (
+                  <div className="px-4 pb-3 -mt-1">
+                    <a href={rec.payment_slip_url} target="_blank" rel="noopener noreferrer"
+                      className="text-xs text-blue-600 hover:underline">
+                      📄 View Payment Slip
+                    </a>
                   </div>
-
-                  {/* Saving Account */}
-                  <div className="p-4">
-                    <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
-                      🧹 Saving Account
-                    </div>
-                    <div className="space-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-gray-500">This Month Bonus</span>
-                        <span className={Number(rec.total_site_bonus) > 0 ? 'font-medium text-green-600' : 'text-gray-400'}>
-                          {Number(rec.total_site_bonus) > 0 ? `+${formatRM(Number(rec.total_site_bonus))}` : '-'}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-500">Previous Balance</span>
-                        <span className="font-medium">{formatRM(bal.before)}</span>
-                      </div>
-                      <div className="flex justify-between font-bold border-t border-gray-200 pt-2">
-                        <span>Total Saving</span>
-                        <span className="text-green-700">{formatRM(bal.after)}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                </div>
+                )}
               </div>
             );
           })}
         </div>
       )}
 
-      <p className="text-xs text-gray-400 mt-4 text-center">
-        Contact your manager if you have questions about your salary.
+      <p className="text-xs text-gray-400 mt-5 text-center">
+        Questions about your salary? Contact your manager.
       </p>
     </div>
   );
