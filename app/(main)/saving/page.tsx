@@ -1,312 +1,581 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { formatRM } from '@/lib/utils';
+
+// ── Types ──────────────────────────────────────────────────────────────────────
+
+interface SavingsSummary {
+  employee_id: string;
+  full_name: string;
+  rank: string | null;
+  daily_rate: number;
+  months_saving: number;
+  total_contributed: number;
+  interest_earned: number;
+  total_withdrawn: number;
+  current_balance: number;
+  projected_12mo: number;
+  last_activity: string | null;
+}
+
+interface SavingsSettings {
+  interest_rate: number;
+  effective_from: string | null;
+  last_interest_date: string | null;
+  last_interest_month: string | null;
+  total_pool: number;
+}
+
+interface TxRow {
+  id: string;
+  employee_id: string;
+  type: 'credit' | 'debit';
+  type_detail: string;
+  amount: number;
+  balance_after: number;
+  reason: string | null;
+  month: string | null;
+  created_at: string;
+  running_balance: number;
+}
 
 interface Employee {
   id: string;
   full_name: string;
-  daily_rate: number;
-  status: string;
-  site_bonus_balance: number;
+  current_balance: number;
 }
 
-interface SalaryRecord {
-  employee_id: string;
-  month: string;
-  total_site_bonus: number;
+type Tab = 'overview' | 'release' | 'log';
+
+const WITHDRAWAL_REASONS = [
+  { value: 'emergency_withdrawal', label: 'Emergency' },
+  { value: 'medical',              label: 'Medical' },
+  { value: 'flight_home',          label: 'Flight Home' },
+  { value: 'permit_renewal',       label: 'Permit Renewal' },
+  { value: 'other',                label: 'Other' },
+];
+
+function fmtDate(iso: string) {
+  return new Date(iso).toLocaleDateString('en-MY', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+function fmtMonth(ym: string | null) {
+  if (!ym) return '—';
+  const [y, m] = ym.split('-');
+  return new Date(Number(y), Number(m) - 1).toLocaleDateString('en-MY', { month: 'long', year: 'numeric' });
 }
 
-interface Withdrawal {
-  id: string;
-  employee_id: string;
-  month: string;
-  amount: number;
-  notes: string | null;
+function txDescription(row: TxRow): string {
+  if (row.reason) return row.reason;
+  const map: Record<string, string> = {
+    mission_bonus:        'Site bonus',
+    monthly_interest:     `Monthly interest (${fmtMonth(row.month)})`,
+    emergency_withdrawal: 'Emergency withdrawal',
+    medical:              'Medical withdrawal',
+    flight_home:          'Flight Home withdrawal',
+    permit_renewal:       'Permit Renewal withdrawal',
+    other:                'Withdrawal',
+  };
+  return map[row.type_detail] ?? row.type_detail ?? '—';
 }
+
+// ── Page ───────────────────────────────────────────────────────────────────────
 
 export default function SavingPage() {
-  const [employees,  setEmployees]  = useState<Employee[]>([]);
-  const [records,    setRecords]    = useState<SalaryRecord[]>([]);
-  const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([]);
-  const [loading,    setLoading]    = useState(true);
-  const [expanded,   setExpanded]   = useState<string | null>(null);
+  const [tab, setTab] = useState<Tab>('overview');
 
-  // Withdrawal modal
-  const [showModal,  setShowModal]  = useState(false);
-  const [wdEmpId,    setWdEmpId]    = useState('');
-  const [wdAmount,   setWdAmount]   = useState('');
-  const [wdNotes,    setWdNotes]    = useState('');
-  const [wdMonth,    setWdMonth]    = useState('');
-  const [saving,     setSaving]     = useState(false);
-  const [alertMsg,   setAlertMsg]   = useState('');
-  const [alertType,  setAlertType]  = useState<'success'|'danger'>('success');
+  // Overview data
+  const [summary,  setSummary]  = useState<SavingsSummary[]>([]);
+  const [settings, setSettings] = useState<SavingsSettings | null>(null);
+  const [loading,  setLoading]  = useState(true);
 
-  function showAlert(msg: string, type: 'success'|'danger' = 'success') {
+  // Interest apply
+  const [applying,    setApplying]    = useState(false);
+  const [interestApplied, setInterestApplied] = useState(false);
+  const [currentMonth] = useState(() => new Date().toISOString().slice(0, 7));
+
+  // Rate change
+  const [showRateModal, setShowRateModal] = useState(false);
+  const [newRate,       setNewRate]       = useState('');
+  const [rateSaving,    setRateSaving]    = useState(false);
+
+  // Release funds
+  const [relEmpId,    setRelEmpId]    = useState('');
+  const [relAmount,   setRelAmount]   = useState('');
+  const [relReason,   setRelReason]   = useState('emergency_withdrawal');
+  const [relNotes,    setRelNotes]    = useState('');
+  const [releasing,   setReleasing]   = useState(false);
+  const [relConfirm,  setRelConfirm]  = useState(false);
+
+  // Transaction log
+  const [txEmpId,   setTxEmpId]   = useState('');
+  const [txMonth,   setTxMonth]   = useState('');
+  const [txRows,    setTxRows]    = useState<TxRow[]>([]);
+  const [txLoading, setTxLoading] = useState(false);
+
+  // Alert
+  const [alertMsg,  setAlertMsg]  = useState('');
+  const [alertType, setAlertType] = useState<'success' | 'danger'>('success');
+
+  function showAlert(msg: string, type: 'success' | 'danger' = 'success') {
     setAlertMsg(msg); setAlertType(type);
-    setTimeout(() => setAlertMsg(''), 4000);
+    setTimeout(() => setAlertMsg(''), 5000);
   }
 
-  useEffect(() => {
-    async function load() {
-      setLoading(true);
-      try {
-        const [empRes, recRes] = await Promise.all([
-          fetch('/api/employees').then(r => r.json()),
-          fetch('/api/salary/records').then(r => r.json()),
-        ]);
-        setEmployees(Array.isArray(empRes) ? empRes.filter((e: Employee) => e.status === 'active') : []);
-        setRecords(Array.isArray(recRes) ? recRes : []);
-        // TODO: fetch withdrawals from /api/saving/withdrawals when available
-      } finally { setLoading(false); }
-    }
-    load();
+  // Load overview
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [sumRes, setRes, intRes] = await Promise.all([
+        fetch('/api/savings').then(r => r.json()),
+        fetch('/api/savings/settings').then(r => r.json()),
+        fetch('/api/savings/apply-interest').then(r => r.json()),
+      ]);
+      setSummary(Array.isArray(sumRes) ? sumRes : []);
+      setSettings(setRes.interest_rate !== undefined ? setRes : null);
+      setInterestApplied(intRes.applied_this_month ?? false);
+    } finally { setLoading(false); }
   }, []);
 
-  // Per-employee bonus history: month → total_site_bonus
-  const bonusHistory = useMemo(() => {
-    const map: Record<string, Record<string, number>> = {};
-    for (const r of records) {
-      if (!map[r.employee_id]) map[r.employee_id] = {};
-      map[r.employee_id][r.month] = Number(r.total_site_bonus || 0);
-    }
-    return map;
-  }, [records]);
+  useEffect(() => { loadData(); }, [loadData]);
 
-  // All distinct months with any site bonus activity (sorted desc)
-  const allMonths = useMemo(() => {
-    const months = new Set<string>();
-    for (const r of records) { if (Number(r.total_site_bonus) > 0) months.add(r.month); }
-    return Array.from(months).sort((a, b) => b.localeCompare(a));
-  }, [records]);
+  // Load transactions when log tab + filter changes
+  const loadTx = useCallback(async () => {
+    if (!txEmpId) { setTxRows([]); return; }
+    setTxLoading(true);
+    const res = await fetch(`/api/savings/${txEmpId}/statement`);
+    const data = await res.json();
+    let rows: TxRow[] = Array.isArray(data) ? data : [];
+    if (txMonth) rows = rows.filter(r => r.month === txMonth);
+    setTxRows(rows.reverse()); // newest first
+    setTxLoading(false);
+  }, [txEmpId, txMonth]);
 
-  // Grand total
-  const grandTotal = useMemo(() =>
-    employees.reduce((s, e) => s + Number(e.site_bonus_balance || 0), 0), [employees]);
+  useEffect(() => { if (tab === 'log') loadTx(); }, [tab, loadTx]);
 
-  // Total ever earned (from all salary records)
-  const totalEarned = useMemo(() =>
-    records.reduce((s, r) => s + Number(r.total_site_bonus || 0), 0), [records]);
+  // Employees with balance > 0 for release dropdown
+  const empList: Employee[] = useMemo(() =>
+    summary.filter(s => s.current_balance > 0)
+      .map(s => ({ id: s.employee_id, full_name: s.full_name, current_balance: s.current_balance })),
+    [summary]);
+  const selectedEmp = empList.find(e => e.id === relEmpId);
 
-  function openWithdrawal(empId: string) {
-    setWdEmpId(empId);
-    setWdAmount('');
-    setWdNotes('');
-    setWdMonth('');
-    setShowModal(true);
+  // Totals
+  const totalPool       = settings?.total_pool ?? 0;
+  const totalInterest   = summary.reduce((s, r) => s + r.interest_earned, 0);
+  const totalWithdrawn  = summary.reduce((s, r) => s + r.total_withdrawn, 0);
+
+  // Apply monthly interest
+  async function applyInterest() {
+    if (!confirm(`Credit monthly interest (${((settings?.interest_rate ?? 0.02) * 100).toFixed(1)}%) to all ${summary.filter(s => s.current_balance > 0).length} employees with a balance. Confirm?`))
+      return;
+    setApplying(true);
+    try {
+      const res  = await fetch('/api/savings/apply-interest', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) { showAlert(data.error || 'Failed.', 'danger'); return; }
+      showAlert(`Interest applied! ${data.processed} employees credited — ${formatRM(data.total_interest_credited)} total.`);
+      setInterestApplied(true);
+      loadData();
+    } finally { setApplying(false); }
   }
 
-  async function submitWithdrawal() {
-    if (!wdAmount || Number(wdAmount) <= 0) { showAlert('Enter a valid amount.', 'danger'); return; }
-    const emp = employees.find(e => e.id === wdEmpId);
-    if (!emp) return;
-    if (Number(wdAmount) > Number(emp.site_bonus_balance)) {
+  // Change rate
+  async function changeRate() {
+    const r = parseFloat(newRate) / 100;
+    if (isNaN(r) || r < 0 || r > 0.5) { showAlert('Enter a valid rate (0–50%).', 'danger'); return; }
+    setRateSaving(true);
+    try {
+      const res = await fetch('/api/savings/settings', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ interest_rate: r }),
+      });
+      if (!res.ok) { showAlert('Failed to update rate.', 'danger'); return; }
+      showAlert(`Rate updated to ${(r * 100).toFixed(1)}% — effective from next month.`);
+      setShowRateModal(false);
+      setNewRate('');
+      loadData();
+    } finally { setRateSaving(false); }
+  }
+
+  // Release funds
+  async function releaseFunds() {
+    if (!relEmpId || !relAmount || !relNotes.trim()) {
+      showAlert('Fill all fields including notes.', 'danger'); return;
+    }
+    if (Number(relAmount) <= 0) { showAlert('Amount must be positive.', 'danger'); return; }
+    if (selectedEmp && Number(relAmount) > selectedEmp.current_balance) {
       showAlert('Amount exceeds current balance.', 'danger'); return;
     }
-    setSaving(true);
+    if (!relConfirm) { setRelConfirm(true); return; }
+    setReleasing(true);
     try {
-      // Update employee site_bonus_balance directly via employees PATCH
-      const newBal = Math.round((Number(emp.site_bonus_balance) - Number(wdAmount)) * 100) / 100;
-      const res = await fetch(`/api/employees/${wdEmpId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ site_bonus_balance: newBal }),
+      const res = await fetch('/api/savings/withdraw', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ employee_id: relEmpId, amount: Number(relAmount), type_detail: relReason, notes: relNotes }),
       });
-      if (!res.ok) { showAlert('Failed to update balance.', 'danger'); return; }
-      // Update local state
-      setEmployees(es => es.map(e => e.id === wdEmpId ? { ...e, site_bonus_balance: newBal } : e));
-      showAlert(`Withdrew ${formatRM(Number(wdAmount))} from ${emp.full_name}'s saving.`);
-      setShowModal(false);
-    } finally { setSaving(false); }
+      const data = await res.json();
+      if (!res.ok) { showAlert(data.error || 'Failed.', 'danger'); return; }
+      showAlert(`Released ${formatRM(Number(relAmount))} from ${selectedEmp?.full_name}'s savings. Remaining: ${formatRM(data.balance_after)}`);
+      setRelEmpId(''); setRelAmount(''); setRelNotes(''); setRelConfirm(false);
+      loadData();
+    } finally { setReleasing(false); }
   }
 
+  const rate = settings ? (settings.interest_rate * 100).toFixed(1) : '2.0';
+
+  // ── JSX ───────────────────────────────────────────────────────────────────
+
   return (
-    <div className="p-4 md:p-6 max-w-5xl mx-auto">
-      <h1 className="text-2xl font-bold text-primary mb-6">🧹 Saving Account</h1>
+    <div className="p-4 md:p-6 max-w-6xl mx-auto">
+      <div className="flex items-center justify-between mb-2">
+        <h1 className="text-2xl font-bold text-primary">🏦 Savings Account</h1>
+        {settings && (
+          <div className="text-xs text-gray-500 text-right">
+            <div>Rate: <strong className="text-green-700">{rate}%/mo</strong></div>
+            {settings.last_interest_month && (
+              <div>Last interest: {fmtMonth(settings.last_interest_month)}</div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Interest not yet applied banner */}
+      {!loading && !interestApplied && (
+        <div className="mb-4 p-3 rounded-lg bg-yellow-50 border border-yellow-300 flex items-center justify-between gap-3">
+          <span className="text-sm text-yellow-800">
+            ⚠️ Monthly interest has <strong>not yet been applied</strong> for <strong>{fmtMonth(currentMonth)}</strong>.
+          </span>
+          <button
+            className="btn btn-sm bg-yellow-500 hover:bg-yellow-600 text-white shrink-0"
+            onClick={applyInterest} disabled={applying}>
+            {applying ? 'Applying…' : 'Apply Now →'}
+          </button>
+        </div>
+      )}
 
       {alertMsg && <div className={`alert alert-${alertType} mb-4`}>{alertMsg}</div>}
 
-      {loading ? (
-        <div className="card animate-pulse h-40" />
-      ) : (
-        <>
-          {/* ── Summary cards ── */}
-          <div className="grid grid-cols-3 gap-4 mb-6">
-            <div className="card p-4 text-center">
-              <div className="text-xs text-gray-400 mb-1">Total Accumulated</div>
-              <div className="text-2xl font-bold text-green-700">{formatRM(grandTotal)}</div>
-              <div className="text-xs text-gray-400 mt-1">Across all staff</div>
-            </div>
-            <div className="card p-4 text-center">
-              <div className="text-xs text-gray-400 mb-1">Total Ever Earned</div>
-              <div className="text-2xl font-bold text-primary">{formatRM(totalEarned)}</div>
-              <div className="text-xs text-gray-400 mt-1">All site bonuses</div>
-            </div>
-            <div className="card p-4 text-center">
-              <div className="text-xs text-gray-400 mb-1">Staff with Saving</div>
-              <div className="text-2xl font-bold text-accent">
-                {employees.filter(e => Number(e.site_bonus_balance) > 0).length}
-              </div>
-              <div className="text-xs text-gray-400 mt-1">of {employees.length} active</div>
-            </div>
+      {/* Summary stats */}
+      <div className="grid grid-cols-3 gap-4 mb-5">
+        <div className="card p-4 text-center">
+          <div className="text-xs text-gray-400 mb-1">Total Savings Pool</div>
+          <div className="text-2xl font-bold text-primary">{formatRM(totalPool)}</div>
+          <div className="text-xs text-gray-400 mt-1">{summary.filter(s => s.current_balance > 0).length} employees</div>
+        </div>
+        <div className="card p-4 text-center">
+          <div className="text-xs text-gray-400 mb-1">Total Interest Earned</div>
+          <div className="text-2xl font-bold text-green-700">+{formatRM(totalInterest)}</div>
+          <div className="text-xs text-gray-400 mt-1">All time</div>
+        </div>
+        <div className="card p-4 text-center">
+          <div className="text-xs text-gray-400 mb-1">Total Released</div>
+          <div className="text-2xl font-bold text-danger">{formatRM(totalWithdrawn)}</div>
+          <div className="text-xs text-gray-400 mt-1">Emergency releases</div>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex border-b border-bg mb-5">
+        {([
+          ['overview', '📊 Overview'],
+          ['release',  '💸 Release Funds'],
+          ['log',      '📋 Transaction Log'],
+        ] as const).map(([t, label]) => (
+          <button key={t} onClick={() => setTab(t)}
+            className={`px-5 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              tab === t ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── TAB 1: OVERVIEW ── */}
+      {tab === 'overview' && (
+        <div>
+          {/* Controls */}
+          <div className="flex items-center gap-3 mb-4 flex-wrap">
+            <button
+              className="btn btn-success text-sm"
+              onClick={applyInterest}
+              disabled={applying || interestApplied}>
+              {applying ? 'Processing…' : interestApplied ? `✓ Interest Applied (${fmtMonth(currentMonth)})` : `⚡ Apply ${rate}% Monthly Interest`}
+            </button>
+            <button className="btn btn-secondary text-sm" onClick={() => setShowRateModal(true)}>
+              ⚙️ Change Rate
+            </button>
           </div>
 
-          {/* ── Main table ── */}
-          <div className="card p-0 overflow-hidden">
-            <div className="px-5 py-3 border-b border-bg flex items-center justify-between">
-              <span className="text-sm font-semibold text-primary">Staff Saving Balance</span>
-              <span className="text-xs text-gray-400">Click row to see monthly history</span>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr style={{ background: '#1e3a5f' }}>
-                    <th className="px-4 py-2.5 text-left text-xs text-white font-semibold">Name</th>
-                    <th className="px-4 py-2.5 text-right text-xs text-white font-semibold">Rate/day</th>
-                    <th className="px-4 py-2.5 text-right text-xs text-white font-semibold">Current Balance</th>
-                    <th className="px-4 py-2.5 text-center text-xs text-white font-semibold">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {employees.map((emp, idx) => {
-                    const balance = Number(emp.site_bonus_balance || 0);
-                    const history = bonusHistory[emp.id] ?? {};
-                    const isOpen  = expanded === emp.id;
-                    const monthsEarned = Object.entries(history).filter(([, v]) => v > 0).sort(([a], [b]) => b.localeCompare(a));
-
-                    return (
-                      <>
-                        <tr key={emp.id}
-                          onClick={() => setExpanded(isOpen ? null : emp.id)}
-                          className="cursor-pointer hover:bg-gray-50 transition-colors"
-                          style={{ background: idx % 2 === 0 ? '#fff' : '#f8fafc', borderBottom: isOpen ? 'none' : '1px solid #f1f5f9' }}>
-                          <td className="px-4 py-3 font-medium text-gray-800">
-                            <span>{emp.full_name}</span>
-                            <span className="ml-2 text-gray-400 text-xs">{isOpen ? '▲' : '▼'}</span>
-                          </td>
-                          <td className="px-4 py-3 text-right text-gray-500">{formatRM(Number(emp.daily_rate))}</td>
-                          <td className="px-4 py-3 text-right">
-                            <span className={`font-bold text-base ${balance > 0 ? 'text-green-700' : 'text-gray-400'}`}>
-                              {formatRM(balance)}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-center" onClick={e => e.stopPropagation()}>
-                            {balance > 0 ? (
-                              <button
-                                className="text-xs btn btn-secondary py-1 px-3"
-                                onClick={() => openWithdrawal(emp.id)}>
-                                💸 Withdraw
-                              </button>
-                            ) : (
-                              <span className="text-xs text-gray-300">-</span>
-                            )}
-                          </td>
-                        </tr>
-
-                        {/* Monthly history expand */}
-                        {isOpen && (
-                          <tr key={`${emp.id}-history`}
-                            style={{ background: '#f0fdf4', borderBottom: '2px solid #86efac' }}>
-                            <td colSpan={4} className="px-6 py-3">
-                              {monthsEarned.length === 0 ? (
-                                <span className="text-xs text-gray-400">No site bonus earned yet.</span>
-                              ) : (
-                                <div>
-                                  <div className="text-xs font-semibold text-green-700 mb-2 uppercase tracking-wide">Monthly Bonus History</div>
-                                  <div className="flex flex-wrap gap-2">
-                                    {monthsEarned.map(([month, amt]) => (
-                                      <div key={month} className="flex items-center gap-1.5 bg-white rounded-lg px-3 py-1.5 border border-green-200 text-xs">
-                                        <span className="text-gray-500 font-mono">{month}</span>
-                                        <span className="text-green-700 font-bold">+{formatRM(amt)}</span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                  <div className="mt-2 text-xs text-gray-400">
-                                    Total earned: <strong className="text-green-700">{formatRM(monthsEarned.reduce((s, [, v]) => s + v, 0))}</strong>
-                                  </div>
-                                </div>
-                              )}
-                            </td>
-                          </tr>
-                        )}
-                      </>
-                    );
-                  })}
-                </tbody>
-                <tfoot>
-                  <tr style={{ background: '#f0f4f8', borderTop: '2px solid #cbd5e1', fontWeight: 700 }}>
-                    <td className="px-4 py-2.5 text-sm text-primary" colSpan={2}>TOTAL</td>
-                    <td className="px-4 py-2.5 text-right text-sm text-green-700">{formatRM(grandTotal)}</td>
-                    <td className="px-4 py-2.5" />
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          </div>
-
-          {/* All months quick view */}
-          {allMonths.length > 0 && (
-            <div className="card p-4 mt-4">
-              <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Site Bonus Activity by Month</div>
-              <div className="flex flex-wrap gap-2">
-                {allMonths.map(month => {
-                  const total = records
-                    .filter(r => r.month === month)
-                    .reduce((s, r) => s + Number(r.total_site_bonus || 0), 0);
-                  return (
-                    <div key={month} className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-xs">
-                      <span className="font-mono text-gray-600">{month}</span>
-                      <span className="font-bold text-green-700">+{formatRM(total)}</span>
-                    </div>
-                  );
-                })}
+          {loading ? (
+            <div className="card animate-pulse h-40" />
+          ) : (
+            <div className="card p-0 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr style={{ background: '#1e3a5f' }}>
+                      <th className="px-3 py-2.5 text-left text-xs text-white font-semibold">Name</th>
+                      <th className="px-3 py-2.5 text-left text-xs text-white font-semibold">Tier</th>
+                      <th className="px-3 py-2.5 text-right text-xs text-white font-semibold">Months</th>
+                      <th className="px-3 py-2.5 text-right text-xs text-white font-semibold">Contributed</th>
+                      <th className="px-3 py-2.5 text-right text-xs text-white font-semibold">Interest</th>
+                      <th className="px-3 py-2.5 text-right text-xs text-white font-semibold">Balance</th>
+                      <th className="px-3 py-2.5 text-right text-xs text-white font-semibold">Projected 12mo</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {summary.map((row, idx) => (
+                      <tr key={row.employee_id}
+                        style={{ background: idx % 2 === 0 ? '#fff' : '#f8fafc', borderBottom: '1px solid #f1f5f9' }}>
+                        <td className="px-3 py-2.5 font-medium text-gray-800">{row.full_name}</td>
+                        <td className="px-3 py-2.5 text-xs">
+                          {row.rank
+                            ? <span className="badge bg-blue-50 text-blue-700">{row.rank}</span>
+                            : <span className="text-gray-300">—</span>}
+                        </td>
+                        <td className="px-3 py-2.5 text-right text-gray-500">{row.months_saving}</td>
+                        <td className="px-3 py-2.5 text-right text-gray-600">{formatRM(row.total_contributed)}</td>
+                        <td className="px-3 py-2.5 text-right text-green-600 font-medium">
+                          {row.interest_earned > 0 ? `+${formatRM(row.interest_earned)}` : '—'}
+                        </td>
+                        <td className="px-3 py-2.5 text-right">
+                          <span className={`font-bold ${row.current_balance > 0 ? 'text-primary' : 'text-gray-400'}`}>
+                            {formatRM(row.current_balance)}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2.5 text-right text-green-700 font-medium">
+                          {row.current_balance > 0 ? formatRM(row.projected_12mo) : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                    {summary.length === 0 && (
+                      <tr><td colSpan={7} className="px-3 py-10 text-center text-gray-400">No savings data yet.</td></tr>
+                    )}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{ background: '#f0f4f8', borderTop: '2px solid #cbd5e1', fontWeight: 700 }}>
+                      <td className="px-3 py-2.5 text-sm text-primary" colSpan={3}>TOTAL</td>
+                      <td className="px-3 py-2.5 text-right text-sm text-primary">
+                        {formatRM(summary.reduce((s, r) => s + r.total_contributed, 0))}
+                      </td>
+                      <td className="px-3 py-2.5 text-right text-sm text-green-700">
+                        +{formatRM(totalInterest)}
+                      </td>
+                      <td className="px-3 py-2.5 text-right text-sm text-primary">
+                        {formatRM(totalPool)}
+                      </td>
+                      <td className="px-3 py-2.5 text-right text-sm text-green-700">
+                        {formatRM(summary.reduce((s, r) => s + r.projected_12mo, 0))}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
               </div>
             </div>
           )}
-        </>
-      )}
 
-      {/* ── Withdrawal modal ── */}
-      {showModal && (() => {
-        const emp = employees.find(e => e.id === wdEmpId);
-        return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden">
-              <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-                <h3 className="font-bold text-primary">💸 Withdraw Saving</h3>
-                <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+          {/* Settings panel */}
+          {settings && (
+            <div className="card p-4 mt-4 flex flex-wrap gap-6 text-sm">
+              <div>
+                <div className="text-xs text-gray-400 mb-1">Current Interest Rate</div>
+                <div className="font-bold text-green-700 text-lg">{rate}% / month</div>
               </div>
-              <div className="p-5 space-y-4">
-                <div className="p-3 rounded-lg bg-green-50 border border-green-200 text-sm">
-                  <div className="text-gray-600">{emp?.full_name}</div>
-                  <div className="font-bold text-green-700 text-base mt-0.5">
-                    Balance: {formatRM(Number(emp?.site_bonus_balance || 0))}
-                  </div>
-                </div>
-                <div>
-                  <label className="form-label">Withdrawal Month</label>
-                  <input type="month" className="form-control" value={wdMonth} onChange={e => setWdMonth(e.target.value)} />
-                </div>
-                <div>
-                  <label className="form-label">Amount (RM)</label>
-                  <input type="number" min="0.01" step="0.01" className="form-control"
-                    placeholder="0.00" value={wdAmount} onChange={e => setWdAmount(e.target.value)} />
-                </div>
-                <div>
-                  <label className="form-label">Notes (optional)</label>
-                  <input type="text" className="form-control" placeholder="Reason for withdrawal…"
-                    value={wdNotes} onChange={e => setWdNotes(e.target.value)} />
+              <div>
+                <div className="text-xs text-gray-400 mb-1">Compounding</div>
+                <div className="font-semibold text-gray-700">Monthly</div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-400 mb-1">Last Interest Applied</div>
+                <div className="font-semibold text-gray-700">
+                  {settings.last_interest_month ? fmtMonth(settings.last_interest_month) : 'Not yet applied'}
                 </div>
               </div>
-              <div className="px-5 py-4 border-t border-gray-100 flex gap-2 justify-end">
-                <button className="btn btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>
-                <button className="btn btn-danger" onClick={submitWithdrawal} disabled={saving}>
-                  {saving ? 'Processing…' : '💸 Confirm Withdraw'}
-                </button>
+              <div>
+                <div className="text-xs text-gray-400 mb-1">Total Pool</div>
+                <div className="font-bold text-primary text-lg">{formatRM(settings.total_pool)}</div>
               </div>
             </div>
+          )}
+        </div>
+      )}
+
+      {/* ── TAB 2: RELEASE FUNDS ── */}
+      {tab === 'release' && (
+        <div className="max-w-lg">
+          <div className="card p-6 space-y-4">
+            <div className="p-3 rounded-lg bg-yellow-50 border border-yellow-200 text-xs text-yellow-800">
+              ⚠️ Emergency release only. Worker cannot request this themselves — admin decides case by case. A reason and notes are required.
+            </div>
+
+            <div>
+              <label className="form-label">Employee</label>
+              <select className="form-control" value={relEmpId} onChange={e => { setRelEmpId(e.target.value); setRelConfirm(false); }}>
+                <option value="">— Select employee —</option>
+                {empList.map(e => (
+                  <option key={e.id} value={e.id}>
+                    {e.full_name} — Balance: {formatRM(e.current_balance)}
+                  </option>
+                ))}
+              </select>
+              {empList.length === 0 && !loading && (
+                <p className="text-xs text-gray-400 mt-1">No employees with savings balance.</p>
+              )}
+            </div>
+
+            {selectedEmp && (
+              <div className="p-3 rounded-lg bg-green-50 border border-green-200">
+                <div className="text-xs text-gray-500">Current Balance</div>
+                <div className="text-xl font-bold text-green-700">{formatRM(selectedEmp.current_balance)}</div>
+              </div>
+            )}
+
+            <div>
+              <label className="form-label">Amount (RM)</label>
+              <input type="number" min="0.01" step="0.01" className="form-control"
+                placeholder="0.00" value={relAmount}
+                onChange={e => { setRelAmount(e.target.value); setRelConfirm(false); }} />
+              {selectedEmp && Number(relAmount) > selectedEmp.current_balance && (
+                <p className="text-xs text-danger mt-1">Exceeds balance of {formatRM(selectedEmp.current_balance)}</p>
+              )}
+            </div>
+
+            <div>
+              <label className="form-label">Reason</label>
+              <select className="form-control" value={relReason}
+                onChange={e => { setRelReason(e.target.value); setRelConfirm(false); }}>
+                {WITHDRAWAL_REASONS.map(r => (
+                  <option key={r.value} value={r.value}>{r.label}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="form-label">Notes <span className="text-danger">*</span></label>
+              <textarea className="form-control" rows={3}
+                placeholder="Describe the situation requiring this release…"
+                value={relNotes}
+                onChange={e => { setRelNotes(e.target.value); setRelConfirm(false); }} />
+            </div>
+
+            {relConfirm && (
+              <div className="p-3 rounded-lg bg-red-50 border border-red-300 text-sm text-red-800 font-medium">
+                ⚠️ Confirm releasing <strong>{formatRM(Number(relAmount))}</strong> from <strong>{selectedEmp?.full_name}</strong>?
+                Remaining balance will be <strong>{formatRM((selectedEmp?.current_balance ?? 0) - Number(relAmount))}</strong>.
+                <br />Click again to confirm.
+              </div>
+            )}
+
+            <button
+              className={`btn w-full ${relConfirm ? 'btn-danger' : 'btn-primary'}`}
+              onClick={releaseFunds}
+              disabled={releasing || !relEmpId || !relAmount || !relNotes.trim()}>
+              {releasing ? 'Processing…' : relConfirm ? '⚠️ Confirm Release' : '💸 Release Funds'}
+            </button>
           </div>
-        );
-      })()}
+        </div>
+      )}
+
+      {/* ── TAB 3: TRANSACTION LOG ── */}
+      {tab === 'log' && (
+        <div>
+          {/* Filters */}
+          <div className="card p-4 mb-4">
+            <div className="flex items-end gap-3 flex-wrap">
+              <div>
+                <label className="form-label">Employee</label>
+                <select className="form-control" value={txEmpId} onChange={e => setTxEmpId(e.target.value)}>
+                  <option value="">— Select employee —</option>
+                  {summary.map(s => (
+                    <option key={s.employee_id} value={s.employee_id}>{s.full_name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="form-label">Month</label>
+                <input type="month" className="form-control" value={txMonth}
+                  onChange={e => setTxMonth(e.target.value)} />
+              </div>
+              {txMonth && (
+                <button className="btn btn-secondary text-sm" onClick={() => setTxMonth('')}>Clear</button>
+              )}
+            </div>
+          </div>
+
+          {!txEmpId ? (
+            <div className="card py-12 text-center text-gray-400">Select an employee to view their statement.</div>
+          ) : txLoading ? (
+            <div className="card animate-pulse h-40" />
+          ) : txRows.length === 0 ? (
+            <div className="card py-12 text-center text-gray-400">No transactions found.</div>
+          ) : (
+            <div className="card p-0 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr style={{ background: '#1e3a5f' }}>
+                      <th className="px-3 py-2.5 text-left text-xs text-white font-semibold">Date</th>
+                      <th className="px-3 py-2.5 text-left text-xs text-white font-semibold">Description</th>
+                      <th className="px-3 py-2.5 text-right text-xs text-white font-semibold">Credit</th>
+                      <th className="px-3 py-2.5 text-right text-xs text-white font-semibold">Debit</th>
+                      <th className="px-3 py-2.5 text-right text-xs text-white font-semibold">Balance</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {txRows.map((row, idx) => (
+                      <tr key={row.id} style={{ background: idx % 2 === 0 ? '#fff' : '#f8fafc', borderBottom: '1px solid #f1f5f9' }}>
+                        <td className="px-3 py-2.5 text-xs text-gray-500 font-mono whitespace-nowrap">
+                          {fmtDate(row.created_at)}
+                        </td>
+                        <td className="px-3 py-2.5 text-gray-700">{txDescription(row)}</td>
+                        <td className="px-3 py-2.5 text-right text-green-600 font-medium">
+                          {row.type === 'credit' ? `+${formatRM(row.amount)}` : ''}
+                        </td>
+                        <td className="px-3 py-2.5 text-right text-danger font-medium">
+                          {row.type === 'debit' ? `-${formatRM(row.amount)}` : ''}
+                        </td>
+                        <td className="px-3 py-2.5 text-right font-bold text-primary">
+                          {formatRM(row.running_balance)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Rate Change Modal ── */}
+      {showRateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden">
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+              <h3 className="font-bold text-primary">⚙️ Change Interest Rate</h3>
+              <button onClick={() => setShowRateModal(false)} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="text-sm text-gray-600 bg-blue-50 border border-blue-200 rounded-lg p-3">
+                Current rate: <strong>{rate}%/month</strong><br />
+                New rate takes effect from <strong>next month's 1st</strong>.
+              </div>
+              <div>
+                <label className="form-label">New Rate (%)</label>
+                <input type="number" step="0.1" min="0" max="50" className="form-control"
+                  placeholder="e.g. 2.5" value={newRate}
+                  onChange={e => setNewRate(e.target.value)} />
+              </div>
+            </div>
+            <div className="px-5 py-4 border-t border-gray-100 flex gap-2 justify-end">
+              <button className="btn btn-secondary" onClick={() => setShowRateModal(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={changeRate} disabled={rateSaving}>
+                {rateSaving ? 'Saving…' : 'Update Rate'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

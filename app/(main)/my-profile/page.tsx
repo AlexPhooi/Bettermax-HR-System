@@ -12,12 +12,49 @@ interface Employee {
   avatar_url: string | null; status: string;
 }
 
+interface TxRow {
+  id: string;
+  type: 'credit' | 'debit';
+  type_detail: string;
+  amount: number;
+  balance_after: number;
+  reason: string | null;
+  month: string | null;
+  created_at: string;
+  running_balance: number;
+}
+
+function fmtRM(n: number) { return 'RM ' + n.toFixed(2); }
+function fmtMonth(m: string | null) {
+  if (!m) return '—';
+  const [y, mo] = m.split('-');
+  return new Date(Number(y), Number(mo) - 1).toLocaleString('en-GB', { month: 'long', year: 'numeric' });
+}
+function txLabel(row: TxRow) {
+  if (row.reason) return row.reason;
+  const map: Record<string, string> = {
+    mission_bonus:        'Site bonus',
+    monthly_interest:     `Monthly interest (${fmtMonth(row.month)})`,
+    emergency_withdrawal: 'Emergency withdrawal',
+    medical:              'Medical withdrawal',
+    flight_home:          'Flight home',
+    permit_renewal:       'Permit renewal',
+    other:                'Withdrawal',
+  };
+  return map[row.type_detail] ?? row.type_detail ?? '—';
+}
+
 export default function MyProfilePage() {
   const { employee_id } = useRole();
   const [emp,     setEmp]     = useState<Employee | null>(null);
   const [loading, setLoading] = useState(true);
   const [alertMsg, setAlertMsg]   = useState('');
   const [alertType, setAlertType] = useState<'success' | 'danger'>('success');
+
+  // Savings state
+  const [savTxs,       setSavTxs]       = useState<TxRow[]>([]);
+  const [savLoading,   setSavLoading]   = useState(false);
+  const [projExpanded, setProjExpanded] = useState(false);
 
   // Edit form state
   const [editing, setEditing] = useState(false);
@@ -49,7 +86,17 @@ export default function MyProfilePage() {
     setEmp(list[0] || null);
     setLoading(false);
   }
+
+  async function loadSavings(empId: string) {
+    setSavLoading(true);
+    try {
+      const res = await fetch(`/api/savings/${empId}/statement`);
+      if (res.ok) { const d = await res.json(); setSavTxs(Array.isArray(d) ? d : []); }
+    } finally { setSavLoading(false); }
+  }
+
   useEffect(() => { load(); }, []);
+  useEffect(() => { if (employee_id) loadSavings(employee_id); }, [employee_id]);
 
   function startEdit() {
     if (!emp) return;
@@ -120,6 +167,21 @@ export default function MyProfilePage() {
   const permitStatus = emp.permit_expire ? getPermitStatus(emp.permit_expire) : null;
   const rankColor    = emp.rank ? (RANK_COLORS[emp.rank] || 'bg-gray-100 text-gray-600') : '';
   const initials     = emp.full_name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+
+  // ── Savings calculations ────────────────────────────────────────────
+  const currentBalance = savTxs.length > 0 ? savTxs[savTxs.length - 1].running_balance : 0;
+  const thisMonthStr   = new Date().toISOString().slice(0, 7);
+  const thisMonthTxs   = savTxs.filter(r => r.month === thisMonthStr);
+  const thisMonthBonus = thisMonthTxs.filter(r => r.type_detail === 'mission_bonus').reduce((s, r) => s + Number(r.amount), 0);
+  const thisMonthInterest = thisMonthTxs.filter(r => r.type_detail === 'monthly_interest').reduce((s, r) => s + Number(r.amount), 0);
+  const totalInterest  = savTxs.filter(r => r.type_detail === 'monthly_interest').reduce((s, r) => s + Number(r.amount), 0);
+  const last6          = savTxs.slice(-6).reverse();
+  const RATE = 0.02;
+  const proj3  = Math.round(currentBalance * Math.pow(1 + RATE, 3)  * 100) / 100;
+  const proj6  = Math.round(currentBalance * Math.pow(1 + RATE, 6)  * 100) / 100;
+  const proj12 = Math.round(currentBalance * Math.pow(1 + RATE, 12) * 100) / 100;
+  const projMax = proj12 || 1;
+  const hasSavings = savTxs.length > 0;
 
   return (
     <div className="p-4 md:p-6 max-w-2xl mx-auto space-y-4">
@@ -242,6 +304,109 @@ export default function MyProfilePage() {
               {pwSaving ? 'Changing…' : 'Change Password'}
             </button>
           </div>
+        )}
+      </div>
+
+      {/* ── My Savings Account ── */}
+      <div className="card space-y-4">
+        <div className="flex items-center gap-2">
+          <span className="text-xl">🏦</span>
+          <h3 className="font-bold text-gray-800 text-lg">My Savings Account</h3>
+        </div>
+
+        {savLoading ? (
+          <div className="text-center py-6 text-gray-400 animate-pulse">Loading savings…</div>
+        ) : !hasSavings ? (
+          <div className="text-center py-6">
+            <p className="text-gray-400 text-sm">No savings yet.</p>
+            <p className="text-gray-400 text-xs mt-1">Site bonuses from approved attendance will appear here.</p>
+          </div>
+        ) : (
+          <>
+            {/* Balance row */}
+            <div className="bg-gradient-to-r from-primary/5 to-accent/5 rounded-xl p-5 border border-primary/10">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Current Balance</p>
+              <p className="text-4xl font-extrabold text-primary">{fmtRM(currentBalance)}</p>
+              <p className="text-xs text-gray-400 mt-1">2% monthly compound interest</p>
+            </div>
+
+            {/* Stats grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="bg-blue-50 rounded-lg p-3 text-center">
+                <p className="text-xs text-blue-500 font-medium mb-0.5">This Month's Bonus</p>
+                <p className="text-lg font-bold text-blue-700">{thisMonthBonus > 0 ? fmtRM(thisMonthBonus) : '—'}</p>
+              </div>
+              <div className="bg-green-50 rounded-lg p-3 text-center">
+                <p className="text-xs text-green-500 font-medium mb-0.5">Interest This Month</p>
+                <p className="text-lg font-bold text-green-700">{thisMonthInterest > 0 ? `+${fmtRM(thisMonthInterest)}` : '—'}</p>
+              </div>
+              <div className="bg-purple-50 rounded-lg p-3 text-center">
+                <p className="text-xs text-purple-500 font-medium mb-0.5">Total Interest Earned</p>
+                <p className="text-lg font-bold text-purple-700">{totalInterest > 0 ? fmtRM(totalInterest) : '—'}</p>
+              </div>
+            </div>
+
+            {/* Projection (collapsible) */}
+            <div className="border border-gray-100 rounded-lg overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setProjExpanded(o => !o)}
+                className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition text-sm font-medium text-gray-700">
+                <span>📈 See Projection</span>
+                <span className="text-gray-400">{projExpanded ? '▲' : '▼'}</span>
+              </button>
+              {projExpanded && (
+                <div className="p-4 space-y-3">
+                  <p className="text-xs text-gray-400">Based on current balance at 2%/month (no withdrawals)</p>
+                  {[
+                    { label: '3 months', value: proj3 },
+                    { label: '6 months', value: proj6 },
+                    { label: '12 months', value: proj12 },
+                  ].map(p => (
+                    <div key={p.label}>
+                      <div className="flex justify-between text-xs mb-1">
+                        <span className="text-gray-600 font-medium">{p.label}</span>
+                        <span className="font-bold text-primary">{fmtRM(p.value)}</span>
+                      </div>
+                      <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-gradient-to-r from-primary to-accent rounded-full transition-all"
+                          style={{ width: `${Math.min((p.value / projMax) * 100, 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                  <p className="text-xs text-green-600 font-medium mt-2">
+                    💡 At 12 months your savings could grow to <strong>{fmtRM(proj12)}</strong>
+                    {' '}({fmtRM(proj12 - currentBalance)} in interest!)
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Last 6 transactions */}
+            <div>
+              <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Recent Transactions</h4>
+              <div className="divide-y divide-gray-50">
+                {last6.map(tx => (
+                  <div key={tx.id} className="flex items-center justify-between py-2.5">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm text-gray-700 truncate">{txLabel(tx)}</p>
+                      <p className="text-xs text-gray-400">{new Date(tx.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                    </div>
+                    <div className="ml-4 text-right shrink-0">
+                      <p className={`text-sm font-bold ${tx.type === 'credit' ? 'text-green-600' : 'text-red-500'}`}>
+                        {tx.type === 'credit' ? '+' : '-'}{fmtRM(Number(tx.amount))}
+                      </p>
+                      <p className="text-xs text-gray-400">Bal: {fmtRM(tx.running_balance)}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <p className="text-xs text-gray-400 text-center">Withdrawals are for emergencies only and require manager approval.</p>
+          </>
         )}
       </div>
 

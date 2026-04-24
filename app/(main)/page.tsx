@@ -15,6 +15,10 @@ interface DashData {
   current_month: string;
 }
 
+function currentMonthLabel() {
+  return new Date().toLocaleString('en-GB', { month: 'long', year: 'numeric' });
+}
+
 const ADMIN_QUICK = [
   { href: '/projects',   icon: '🏗️', label: 'Projects' },
   { href: '/employees',  icon: '👷', label: 'Employees' },
@@ -28,10 +32,35 @@ export default function DashboardPage() {
   const isAdmin = role === 'admin' || role === 'owner';
 
   const [data, setData] = useState<DashData | null>(null);
+  const [interestApplied, setInterestApplied] = useState<boolean | null>(null);
+  const [applyingInterest, setApplyingInterest] = useState(false);
+  const [interestMsg, setInterestMsg] = useState('');
 
   useEffect(() => {
     fetch('/api/dashboard').then(r => r.json()).then(setData);
   }, []);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    fetch('/api/savings/apply-interest')
+      .then(r => r.json())
+      .then(d => { if (typeof d.applied_this_month === 'boolean') setInterestApplied(d.applied_this_month); });
+  }, [isAdmin]);
+
+  async function applyInterest() {
+    setApplyingInterest(true);
+    setInterestMsg('');
+    try {
+      const res = await fetch('/api/savings/apply-interest', { method: 'POST' });
+      const d   = await res.json();
+      if (res.ok) {
+        setInterestApplied(true);
+        setInterestMsg(`✅ Interest applied for ${currentMonthLabel()} — RM ${Number(d.total_interest_credited || 0).toFixed(2)} credited across ${d.processed || 0} accounts.`);
+      } else {
+        setInterestMsg(`⚠️ ${d.error || 'Failed to apply interest.'}`);
+      }
+    } finally { setApplyingInterest(false); }
+  }
 
   const stats = data && isAdmin ? [
     { label: 'Active Employees', value: data.active_employees, color: 'border-primary' },
@@ -49,6 +78,29 @@ export default function DashboardPage() {
         <h1 className="text-2xl font-bold text-primary">Dashboard</h1>
         {data && <span className="text-sm text-gray-500">Month: <strong>{data.current_month}</strong></span>}
       </div>
+
+      {/* ── Interest banner (admin only) ── */}
+      {isAdmin && interestApplied === false && !interestMsg && (
+        <div className="mb-4 flex items-center justify-between gap-3 bg-amber-50 border border-amber-300 text-amber-800 rounded-lg px-4 py-3">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">💰</span>
+            <span className="text-sm font-medium">
+              Monthly interest not yet applied for <strong>{currentMonthLabel()}</strong>.
+            </span>
+          </div>
+          <button
+            onClick={applyInterest}
+            disabled={applyingInterest}
+            className="shrink-0 text-xs font-semibold bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-md transition disabled:opacity-60">
+            {applyingInterest ? 'Applying…' : 'Apply Now →'}
+          </button>
+        </div>
+      )}
+      {interestMsg && (
+        <div className={`mb-4 text-sm px-4 py-3 rounded-lg border ${interestMsg.startsWith('✅') ? 'bg-green-50 border-green-300 text-green-800' : 'bg-red-50 border-red-300 text-red-800'}`}>
+          {interestMsg}
+        </div>
+      )}
 
       {/* Stat cards */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
