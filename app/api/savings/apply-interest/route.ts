@@ -40,16 +40,16 @@ export async function POST(req: NextRequest) {
   if ((alreadyApplied || 0) > 0)
     return NextResponse.json({ error: `Interest already applied for ${month}.` }, { status: 409 });
 
-  // Get current interest rate + birthday rate
+  // Get current interest rate (flat rate for all, birthday benefit is site bonus x2 only)
   const { data: settings } = await supabase
     .from('savings_settings')
-    .select('interest_rate, birthday_rate')
+    .select('interest_rate')
     .lte('effective_from', now.toISOString().split('T')[0])
     .order('effective_from', { ascending: false })
     .limit(1)
     .single();
   const standardRate  = Number(settings?.interest_rate ?? 0.02);
-  const birthdayRate  = Number(settings?.birthday_rate  ?? 0.04);
+  const birthdayRate  = standardRate; // same rate — birthday benefit is site bonus x2 only
 
   // Get all active employees with date_of_birth
   const { data: employees } = await supabase
@@ -84,9 +84,7 @@ export async function POST(req: NextRequest) {
 
     const interest     = Math.round(balance * rate * 100) / 100;
     const balanceAfter = Math.round((balance + interest) * 100) / 100;
-    const rateLabel    = isBirthdayMonth
-      ? `🎂 Birthday month interest @ ${(rate * 100).toFixed(1)}%`
-      : `Monthly interest @ ${(rate * 100).toFixed(1)}%`;
+    const rateLabel = `Monthly interest @ ${(rate * 100).toFixed(1)}%`;
 
     const { error } = await supabase.from('savings').insert({
       employee_id:   emp.id,

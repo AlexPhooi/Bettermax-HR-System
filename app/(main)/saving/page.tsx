@@ -20,7 +20,6 @@ interface SavingsSummary {
 
 interface SavingsSettings {
   interest_rate: number;
-  birthday_rate: number;
   effective_from: string | null;
   last_interest_date: string | null;
   last_interest_month: string | null;
@@ -222,8 +221,7 @@ export default function SavingPage() {
     } finally { setReleasing(false); }
   }
 
-  const rate        = settings ? (settings.interest_rate * 100).toFixed(1) : '2.0';
-  const birthdayRate = settings ? (settings.birthday_rate * 100).toFixed(1) : '4.0';
+  const rate = settings ? (settings.interest_rate * 100).toFixed(1) : '2.0';
   // Daily accrual per employee = balance × (monthly_rate / 30)
   const monthlyRate = settings?.interest_rate ?? 0.02;
   const dailyRate   = monthlyRate / 30;
@@ -394,12 +392,8 @@ export default function SavingPage() {
           {settings && (
             <div className="card p-4 mt-4 flex flex-wrap gap-6 text-sm">
               <div>
-                <div className="text-xs text-gray-400 mb-1">Standard Rate</div>
+                <div className="text-xs text-gray-400 mb-1">Interest Rate</div>
                 <div className="font-bold text-green-700 text-lg">{rate}% / month</div>
-              </div>
-              <div>
-                <div className="text-xs text-gray-400 mb-1">🎂 Birthday Rate</div>
-                <div className="font-bold text-pink-600 text-lg">{birthdayRate}% / month</div>
               </div>
               <div>
                 <div className="text-xs text-gray-400 mb-1">Daily Pool Growth</div>

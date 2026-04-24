@@ -434,8 +434,8 @@ function SalaryTab() {
 
 // ── Saving Tab — Interest Rate + Birthday Rate ─────────────────────────
 function SavingTab() {
-  const [settings, setSettings] = useState({ interest_rate: 0.02, birthday_rate: 0.04, total_pool: 0, last_interest_month: null as string | null });
-  const [draft, setDraft]   = useState({ interest_rate: '2', birthday_rate: '4' });
+  const [settings, setSettings] = useState({ interest_rate: 0.02, total_pool: 0, last_interest_month: null as string | null });
+  const [draft, setDraft]   = useState({ interest_rate: '2' });
   const [editing, setEditing]   = useState(false);
   const [loading, setLoading]   = useState(true);
   const [saving, setSaving]     = useState(false);
@@ -452,7 +452,6 @@ function SavingTab() {
     setSettings(data);
     setDraft({
       interest_rate: String(Math.round(data.interest_rate * 100)),
-      birthday_rate: String(Math.round(data.birthday_rate * 100)),
     });
     setLoading(false);
   }
@@ -460,15 +459,12 @@ function SavingTab() {
 
   async function save() {
     const ir = Number(draft.interest_rate) / 100;
-    const br = Number(draft.birthday_rate) / 100;
     if (isNaN(ir) || ir < 0 || ir > 0.5) { showAlert('Interest rate must be 0–50%.', 'danger'); return; }
-    if (isNaN(br) || br < 0 || br > 0.5) { showAlert('Birthday rate must be 0–50%.', 'danger'); return; }
-    if (br < ir) { showAlert('Birthday rate should be ≥ standard rate.', 'danger'); return; }
     setSaving(true);
     try {
       const res = await fetch('/api/savings/settings', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ interest_rate: ir, birthday_rate: br }),
+        body: JSON.stringify({ interest_rate: ir }),
       });
       if (!res.ok) { const d = await res.json(); showAlert(d.error, 'danger'); return; }
       showAlert('Saving rates updated! Effective from next month.');
@@ -479,8 +475,7 @@ function SavingTab() {
 
   if (loading) return <div className="p-8 text-center text-gray-400">Loading…</div>;
 
-  const stdPct  = (settings.interest_rate * 100).toFixed(1);
-  const bDayPct = (settings.birthday_rate * 100).toFixed(1);
+  const stdPct = (settings.interest_rate * 100).toFixed(1);
 
   return (
     <div className="max-w-md space-y-5">
@@ -489,8 +484,8 @@ function SavingTab() {
       <div className="card space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="font-semibold text-gray-800">Interest Rates</h3>
-            <p className="text-sm text-gray-500 mt-0.5">Applied on the 1st of each month</p>
+            <h3 className="font-semibold text-gray-800">Monthly Interest Rate</h3>
+            <p className="text-sm text-gray-500 mt-0.5">Flat rate applied to all employees on the 1st of each month</p>
           </div>
           {!editing && (
             <button className="btn btn-primary" onClick={() => setEditing(true)}>✏️ Edit</button>
@@ -500,7 +495,7 @@ function SavingTab() {
         {editing ? (
           <div className="space-y-4">
             <div>
-              <label className="form-label">Standard Monthly Rate (%)</label>
+              <label className="form-label">Monthly Rate (%)</label>
               <div className="flex items-center gap-2">
                 <input type="number" min={0} max={50} step={0.5} className="form-control w-28"
                   value={draft.interest_rate} onChange={e => setDraft(d => ({ ...d, interest_rate: e.target.value }))} />
@@ -508,32 +503,16 @@ function SavingTab() {
               </div>
               <p className="text-xs text-gray-400 mt-1">e.g. 2 = 2% monthly = 24% annually</p>
             </div>
-            <div>
-              <label className="form-label">🎂 Birthday Month Rate (%)</label>
-              <div className="flex items-center gap-2">
-                <input type="number" min={0} max={50} step={0.5} className="form-control w-28"
-                  value={draft.birthday_rate} onChange={e => setDraft(d => ({ ...d, birthday_rate: e.target.value }))} />
-                <span className="text-gray-500">% / month</span>
-              </div>
-              <p className="text-xs text-gray-400 mt-1">Applied automatically in each worker's birthday month</p>
-            </div>
             <div className="flex gap-3">
               <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
               <button className="btn btn-secondary" onClick={() => setEditing(false)}>Cancel</button>
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-primary/5 border border-primary/15 rounded-xl p-4 text-center">
-              <p className="text-xs text-gray-500 mb-1">Standard Rate</p>
-              <p className="text-3xl font-extrabold text-primary">{stdPct}<span className="text-base font-medium">%</span></p>
-              <p className="text-xs text-gray-400 mt-1">per month</p>
-            </div>
-            <div className="bg-pink-50 border border-pink-200 rounded-xl p-4 text-center">
-              <p className="text-xs text-gray-500 mb-1">🎂 Birthday Rate</p>
-              <p className="text-3xl font-extrabold text-pink-600">{bDayPct}<span className="text-base font-medium">%</span></p>
-              <p className="text-xs text-gray-400 mt-1">birthday month</p>
-            </div>
+          <div className="bg-primary/5 border border-primary/15 rounded-xl p-4 text-center">
+            <p className="text-xs text-gray-500 mb-1">Current Rate</p>
+            <p className="text-4xl font-extrabold text-primary">{stdPct}<span className="text-lg font-medium">%</span></p>
+            <p className="text-xs text-gray-400 mt-1">per month · same for all employees</p>
           </div>
         )}
 
@@ -550,8 +529,8 @@ function SavingTab() {
       </div>
 
       <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-700 space-y-1">
-        <p>💡 <strong>Birthday month bonus</strong>: Workers automatically earn {bDayPct}% (instead of {stdPct}%) in their birth month.</p>
-        <p>💡 <strong>Site bonus x2</strong>: If attendance is approved on a worker&apos;s birthday month, they earn RM20 bonus (instead of RM10).</p>
+        <p>💡 <strong>Flat rate</strong>: All employees earn {stdPct}% monthly — same rate, no exceptions.</p>
+        <p>💡 <strong>🎂 Birthday bonus</strong>: Attendance approved in a worker&apos;s birthday month earns <strong>RM20 site bonus</strong> (x2 vs standard RM10).</p>
         <p>💡 Rate changes take effect from the <strong>1st of next month</strong>.</p>
       </div>
     </div>
