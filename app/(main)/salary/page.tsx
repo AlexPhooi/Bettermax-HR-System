@@ -208,69 +208,118 @@ export default function SalaryPage() {
       {/* ── Table ── */}
       {result && !loading && (
         <div className="card p-0 overflow-hidden print:shadow-none print:border-0">
-          <div className="px-6 py-4 border-b border-bg flex items-center justify-between">
+          <div className="px-6 py-3 border-b border-bg flex items-center justify-between">
             <span className="text-sm font-semibold text-primary">
               {result.data.length} employee{result.data.length !== 1 ? 's' : ''} — {result.month}
             </span>
-            {hasSiteBonus && (
-              <span className="badge bg-green-100 text-green-700 text-xs">🧹 Site Bonus included</span>
-            )}
+            {isFinalized && <span className="badge bg-green-100 text-green-700 text-xs">✓ Finalized</span>}
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full text-sm" style={{ minWidth: 1100 }}>
               <thead>
+                {/* ── Section group headers ── */}
                 <tr>
-                  <th className="table-th">Employee</th>
-                  <th className="table-th text-right">Days</th>
-                  <th className="table-th text-right">Rate</th>
-                  <th className="table-th text-right">Base Pay</th>
-                  <th className="table-th text-right">🧹 Site Bonus</th>
-                  <th className="table-th text-right">Gross</th>
-                  <th className="table-th text-right">Advances</th>
-                  <th className="table-th text-right">Net Salary</th>
+                  {/* Profile */}
+                  <th colSpan={3} className="px-4 py-2 text-center text-xs font-bold tracking-widest uppercase text-white"
+                    style={{ background: '#1e3a5f', borderRight: '2px solid rgba(255,255,255,0.15)' }}>
+                    👤 Profile
+                  </th>
+                  {/* Saving Account */}
+                  <th colSpan={6} className="px-4 py-2 text-center text-xs font-bold tracking-widest uppercase text-white"
+                    style={{ background: '#166534', borderRight: '2px solid rgba(255,255,255,0.15)' }}>
+                    🧹 Saving Account
+                  </th>
+                  {/* Monthly Salary */}
+                  <th colSpan={5} className="px-4 py-2 text-center text-xs font-bold tracking-widest uppercase text-white"
+                    style={{ background: '#1e40af' }}>
+                    💰 Monthly Salary
+                  </th>
+                </tr>
+                {/* ── Column sub-headers ── */}
+                <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+                  {/* Profile cols */}
+                  <th className="table-th text-left" style={{ borderRight: '1px solid #e2e8f0' }}>Name</th>
+                  <th className="table-th text-right" style={{ borderRight: '1px solid #e2e8f0' }}>Rate</th>
+                  <th className="table-th text-right" style={{ borderRight: '2px solid #cbd5e1' }}>Gong</th>
+                  {/* Saving Account cols */}
+                  <th className="table-th text-right" style={{ borderRight: '1px solid #e2e8f0' }}>Current</th>
+                  <th className="table-th text-right" style={{ borderRight: '1px solid #e2e8f0' }}>Bonus</th>
+                  <th className="table-th text-right" style={{ borderRight: '1px solid #e2e8f0' }}>Withdrawal</th>
+                  <th className="table-th text-left" style={{ borderRight: '1px solid #e2e8f0' }}>Transfer To</th>
+                  <th className="table-th text-center no-print" style={{ borderRight: '1px solid #e2e8f0' }}>Slip</th>
+                  <th className="table-th text-right" style={{ borderRight: '2px solid #cbd5e1' }}>New Balance</th>
+                  {/* Monthly Salary cols */}
+                  <th className="table-th text-right" style={{ borderRight: '1px solid #e2e8f0' }}>Gross</th>
+                  <th className="table-th text-right" style={{ borderRight: '1px solid #e2e8f0' }}>Advance</th>
+                  <th className="table-th text-right" style={{ borderRight: '1px solid #e2e8f0' }}>Net</th>
+                  <th className="table-th text-left" style={{ borderRight: '1px solid #e2e8f0' }}>Transfer To</th>
                   <th className="table-th text-center no-print">Slip</th>
                 </tr>
               </thead>
               <tbody>
-                {result.data.map(row => {
+                {result.data.map((row, idx) => {
                   const rec = recordMap[row.employee_id];
                   const isUploading = uploading[row.employee_id];
+                  const newBalance = Math.round((row.site_bonus_balance + row.total_site_bonus) * 100) / 100;
+                  const rowBg = idx % 2 === 0 ? '#ffffff' : '#f8fafc';
+                  const tdStyle = (extra?: string) =>
+                    `px-3 py-2.5 text-sm align-middle ${extra ?? ''}`;
                   return (
-                    <tr key={row.employee_id} className="table-tr">
-                      <td className="table-td">
-                        <div className="font-medium">{row.full_name}</div>
-                        {(row.bank_name || row.bank_account) && (
-                          <div className="text-xs text-gray-400 mt-0.5">
-                            🏦 {row.bank_name} {row.bank_account}
-                          </div>
-                        )}
+                    <tr key={row.employee_id} style={{ background: rowBg, borderBottom: '1px solid #f1f5f9' }}>
+
+                      {/* ── Profile ── */}
+                      <td className={tdStyle('font-medium text-gray-800')} style={{ borderRight: '1px solid #e2e8f0' }}>
+                        {row.full_name}
                       </td>
-                      <td className="table-td text-right">
-                        <span className="text-gray-400 text-xs">({row.attendance_days}d /</span>
-                        <span className="font-semibold ml-0.5">{row.total_days.toFixed(4)}</span>
-                        <span className="text-gray-400 text-xs">)</span>
+                      <td className={tdStyle('text-right text-gray-600')} style={{ borderRight: '1px solid #e2e8f0' }}>
+                        {formatRM(row.daily_rate)}/d
+                      </td>
+                      <td className={tdStyle('text-right')} style={{ borderRight: '2px solid #cbd5e1' }}>
+                        <span className="font-semibold text-primary">{row.total_days.toFixed(2)} 工</span>
                         {row.total_ot_hours > 0 && (
                           <div className="text-xs text-orange-500">+{row.total_ot_hours.toFixed(1)}h OT</div>
                         )}
                       </td>
-                      <td className="table-td text-right">{formatRM(row.daily_rate)}</td>
-                      <td className="table-td text-right">{formatRM(row.base_salary)}</td>
-                      <td className="table-td text-right">
+
+                      {/* ── Saving Account ── */}
+                      <td className={tdStyle('text-right text-gray-600')} style={{ borderRight: '1px solid #e2e8f0' }}>
+                        {formatRM(row.site_bonus_balance)}
+                      </td>
+                      <td className={tdStyle('text-right')} style={{ borderRight: '1px solid #e2e8f0' }}>
                         {row.total_site_bonus > 0
                           ? <span className="text-green-600 font-semibold">+{formatRM(row.total_site_bonus)}</span>
-                          : <span className="text-gray-400">-</span>}
+                          : <span className="text-gray-300">-</span>}
                       </td>
-                      <td className="table-td text-right text-accent font-semibold">{formatRM(row.gross_salary)}</td>
-                      <td className="table-td text-right">
+                      <td className={tdStyle('text-right text-gray-300')} style={{ borderRight: '1px solid #e2e8f0' }}>-</td>
+                      <td className={tdStyle('text-left text-gray-500 text-xs')} style={{ borderRight: '1px solid #e2e8f0', maxWidth: 120 }}>
+                        {row.bank_name || row.bank_account
+                          ? <span>{row.bank_name && <span className="font-medium text-gray-700 block">{row.bank_name}</span>}{row.bank_account}</span>
+                          : <span className="text-gray-300">-</span>}
+                      </td>
+                      <td className={tdStyle('text-center no-print text-gray-300')} style={{ borderRight: '1px solid #e2e8f0' }}>-</td>
+                      <td className={tdStyle('text-right font-semibold text-green-700')} style={{ borderRight: '2px solid #cbd5e1' }}>
+                        {formatRM(newBalance)}
+                      </td>
+
+                      {/* ── Monthly Salary ── */}
+                      <td className={tdStyle('text-right font-semibold text-accent')} style={{ borderRight: '1px solid #e2e8f0' }}>
+                        {formatRM(row.gross_salary)}
+                      </td>
+                      <td className={tdStyle('text-right')} style={{ borderRight: '1px solid #e2e8f0' }}>
                         {row.total_advances > 0
-                          ? <span className="text-danger font-semibold">({formatRM(row.total_advances)})</span>
-                          : <span className="text-gray-400">-</span>}
+                          ? <span className="text-danger font-medium">({formatRM(row.total_advances)})</span>
+                          : <span className="text-gray-300">-</span>}
                       </td>
-                      <td className={`table-td text-right font-bold ${row.net_salary < 0 ? 'text-danger' : 'text-accent'}`}>
+                      <td className={tdStyle(`text-right font-bold ${row.net_salary < 0 ? 'text-danger' : 'text-accent'}`)} style={{ borderRight: '1px solid #e2e8f0' }}>
                         {formatRM(row.net_salary)}
                       </td>
-                      {/* Slip upload — only after finalize */}
-                      <td className="table-td text-center no-print">
+                      <td className={tdStyle('text-left text-gray-500 text-xs')} style={{ borderRight: '1px solid #e2e8f0', maxWidth: 120 }}>
+                        {row.bank_name || row.bank_account
+                          ? <span>{row.bank_name && <span className="font-medium text-gray-700 block">{row.bank_name}</span>}{row.bank_account}</span>
+                          : <span className="text-gray-300">-</span>}
+                      </td>
+                      {/* Salary slip upload */}
+                      <td className={tdStyle('text-center no-print')}>
                         <input type="file" accept="image/*,.pdf" className="hidden"
                           ref={el => { fileRefs.current[row.employee_id] = el; }}
                           onChange={e => {
@@ -292,9 +341,8 @@ export default function SalaryPage() {
                           ) : (
                             <button className="text-xs text-gray-400 hover:text-primary"
                               onClick={() => fileRefs.current[row.employee_id]?.click()}
-                              disabled={isUploading}
-                              title="Upload payment slip">
-                              {isUploading ? '…' : '📎'}
+                              disabled={isUploading} title="Upload payment slip">
+                              {isUploading ? '…' : '📎 Upload'}
                             </button>
                           )
                         ) : (
@@ -305,24 +353,36 @@ export default function SalaryPage() {
                   );
                 })}
               </tbody>
+
+              {/* ── Totals footer ── */}
               {totals && (
                 <tfoot>
-                  <tr className="bg-primary/5 font-bold">
-                    <td className="table-td">TOTAL</td>
-                    <td className="table-td text-right">{totals.total_days.toFixed(4)}</td>
-                    <td className="table-td" />
-                    <td className="table-td text-right">{formatRM(totals.base_salary)}</td>
-                    <td className="table-td text-right text-green-600">
+                  <tr style={{ background: '#f0f4f8', borderTop: '2px solid #cbd5e1', fontWeight: 700 }}>
+                    <td className="px-3 py-2.5 text-sm text-primary" colSpan={2}>TOTAL</td>
+                    <td className="px-3 py-2.5 text-sm text-right text-primary" style={{ borderRight: '2px solid #cbd5e1' }}>
+                      {totals.total_days.toFixed(2)} 工
+                    </td>
+                    {/* Saving totals */}
+                    <td className="px-3 py-2.5 text-sm text-right text-gray-500" style={{ borderRight: '1px solid #e2e8f0' }}>—</td>
+                    <td className="px-3 py-2.5 text-sm text-right text-green-600" style={{ borderRight: '1px solid #e2e8f0' }}>
                       {totals.total_site_bonus > 0 ? `+${formatRM(totals.total_site_bonus)}` : '-'}
                     </td>
-                    <td className="table-td text-right text-accent">{formatRM(totals.gross_salary)}</td>
-                    <td className="table-td text-right text-danger">
+                    <td className="px-3 py-2.5" style={{ borderRight: '1px solid #e2e8f0' }} />
+                    <td className="px-3 py-2.5" style={{ borderRight: '1px solid #e2e8f0' }} />
+                    <td className="px-3 py-2.5 no-print" style={{ borderRight: '1px solid #e2e8f0' }} />
+                    <td className="px-3 py-2.5 text-sm text-right text-green-700" style={{ borderRight: '2px solid #cbd5e1' }}>—</td>
+                    {/* Salary totals */}
+                    <td className="px-3 py-2.5 text-sm text-right text-accent" style={{ borderRight: '1px solid #e2e8f0' }}>
+                      {formatRM(totals.gross_salary)}
+                    </td>
+                    <td className="px-3 py-2.5 text-sm text-right text-danger" style={{ borderRight: '1px solid #e2e8f0' }}>
                       {totals.total_advances > 0 ? `(${formatRM(totals.total_advances)})` : '-'}
                     </td>
-                    <td className={`table-td text-right ${totals.net_salary < 0 ? 'text-danger' : 'text-accent'}`}>
+                    <td className={`px-3 py-2.5 text-sm text-right ${totals.net_salary < 0 ? 'text-danger' : 'text-accent'}`} style={{ borderRight: '1px solid #e2e8f0' }}>
                       {formatRM(totals.net_salary)}
                     </td>
-                    <td className="table-td no-print" />
+                    <td className="px-3 py-2.5" style={{ borderRight: '1px solid #e2e8f0' }} />
+                    <td className="px-3 py-2.5 no-print" />
                   </tr>
                 </tfoot>
               )}
