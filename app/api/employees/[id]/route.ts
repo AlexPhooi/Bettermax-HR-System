@@ -41,10 +41,13 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   const body = await req.json();
   const allowed: Record<string, unknown> = {};
-  if (body.phone        !== undefined) allowed.phone        = body.phone?.trim()        || null;
-  if (body.bank_name    !== undefined) allowed.bank_name    = body.bank_name            || null;
-  if (body.bank_account !== undefined) allowed.bank_account = body.bank_account?.trim() || null;
-  if (body.avatar_url   !== undefined) allowed.avatar_url   = body.avatar_url?.trim()   || null;
+  if (body.phone            !== undefined) allowed.phone            = body.phone?.trim()            || null;
+  if (body.bank_name        !== undefined) allowed.bank_name        = body.bank_name                || null;
+  if (body.bank_account     !== undefined) allowed.bank_account     = body.bank_account?.trim()     || null;
+  if (body.avatar_url       !== undefined) allowed.avatar_url       = body.avatar_url?.trim()       || null;
+  // Workers can upload their own documents
+  if (body.passport_doc_url !== undefined) allowed.passport_doc_url = body.passport_doc_url?.trim() || null;
+  if (body.permit_doc_url   !== undefined) allowed.permit_doc_url   = body.permit_doc_url?.trim()   || null;
   // Manager-only: adjust site bonus balance (e.g. withdrawal)
   if (body.site_bonus_balance !== undefined && isManager(user.role))
     allowed.site_bonus_balance = Number(body.site_bonus_balance);

@@ -1,7 +1,22 @@
 'use client';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { getPermitStatus, RANK_COLORS } from '@/lib/utils';
 import { useRole } from '@/lib/role-context';
+
+function isPdf(url: string) { return url.toLowerCase().includes('.pdf'); }
+
+function DocPreview({ url, label }: { url: string; label: string }) {
+  if (!url) return null;
+  return isPdf(url)
+    ? <a href={url} target="_blank" rel="noopener noreferrer"
+        className="inline-flex items-center gap-1.5 text-xs text-blue-600 hover:underline bg-blue-50 px-2 py-1.5 rounded-lg border border-blue-200 mt-1.5">
+        📄 View {label} PDF
+      </a>
+    : <a href={url} target="_blank" rel="noopener noreferrer" className="block mt-1.5">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={url} alt={label} className="h-20 w-auto rounded-lg border border-gray-200 object-cover hover:opacity-80 cursor-pointer" />
+      </a>;
+}
 
 interface Employee {
   id: string; full_name: string;
@@ -58,10 +73,15 @@ export default function MyProfilePage() {
 
   // Edit form state
   const [editing, setEditing] = useState(false);
-  const [editPhone,    setEditPhone]    = useState('');
-  const [editBank,     setEditBank]     = useState('');
-  const [editBankAcc,  setEditBankAcc]  = useState('');
+  const [editPhone,       setEditPhone]       = useState('');
+  const [editBank,        setEditBank]        = useState('');
+  const [editBankAcc,     setEditBankAcc]     = useState('');
+  const [editPassportUrl, setEditPassportUrl] = useState('');
+  const [editPermitUrl,   setEditPermitUrl]   = useState('');
+  const [docUploading,    setDocUploading]    = useState<'passport' | 'permit' | null>(null);
   const [saving, setSaving] = useState(false);
+  const passportRef = useRef<HTMLInputElement>(null);
+  const permitRef   = useRef<HTMLInputElement>(null);
 
   // Password change state
   const [pwOpen,     setPwOpen]     = useState(false);
@@ -103,6 +123,8 @@ export default function MyProfilePage() {
     setEditPhone(emp.phone || '');
     setEditBank(emp.bank_name || '');
     setEditBankAcc(emp.bank_account || '');
+    setEditPassportUrl(emp.passport_doc_url || '');
+    setEditPermitUrl(emp.permit_doc_url || '');
     setEditing(true);
   }
 
@@ -113,7 +135,13 @@ export default function MyProfilePage() {
       const res = await fetch(`/api/employees/${employee_id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: editPhone, bank_name: editBank, bank_account: editBankAcc }),
+        body: JSON.stringify({
+          phone:            editPhone,
+          bank_name:        editBank,
+          bank_account:     editBankAcc,
+          passport_doc_url: editPassportUrl || null,
+          permit_doc_url:   editPermitUrl   || null,
+        }),
       });
       const data = await res.json();
       if (!res.ok) { showAlert(data.error, 'danger'); return; }
@@ -122,6 +150,28 @@ export default function MyProfilePage() {
       load();
     } finally { setSaving(false); }
   }
+
+  const handleDocUpload = useCallback(async (file: File, docType: 'passport' | 'permit') => {
+    if (!employee_id) return;
+    setDocUploading(docType);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('type', docType);
+      fd.append('employee_id', employee_id);
+      const res  = await fetch('/api/upload', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (res.ok && data.url) {
+        if (docType === 'passport') setEditPassportUrl(data.url);
+        else setEditPermitUrl(data.url);
+        showAlert(`${docType === 'passport' ? 'Passport' : 'Permit'} uploaded ✅`);
+      } else showAlert(data.error || 'Upload failed.', 'danger');
+    } finally {
+      setDocUploading(null);
+      if (passportRef.current) passportRef.current.value = '';
+      if (permitRef.current)   permitRef.current.value   = '';
+    }
+  }, [employee_id]);
 
   async function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -223,12 +273,16 @@ export default function MyProfilePage() {
 
       {/* ── Editable section ── */}
       {editing ? (
-        <div className="card space-y-4">
-          <h3 className="text-sm font-semibold text-gray-700">Edit Contact & Bank Info</h3>
+        <div className="card space-y-5">
+          <h3 className="text-sm font-semibold text-gray-700">Edit My Info</h3>
+
+          {/* Contact */}
           <div>
             <label className="form-label">Phone</label>
             <input className="form-control" value={editPhone} onChange={e => setEditPhone(e.target.value)} placeholder="+60 1X-XXXXXXX" />
           </div>
+
+          {/* Bank */}
           <div>
             <label className="form-label">Bank Name</label>
             <input className="form-control" value={editBank} onChange={e => setEditBank(e.target.value)} placeholder="e.g. Maybank" />
@@ -237,8 +291,66 @@ export default function MyProfilePage() {
             <label className="form-label">Bank Account No.</label>
             <input className="form-control" value={editBankAcc} onChange={e => setEditBankAcc(e.target.value)} placeholder="XXXXXXXXXX" />
           </div>
-          <div className="flex gap-3">
-            <button className="btn btn-primary" onClick={saveEdit} disabled={saving}>{saving ? 'Saving…' : 'Save Changes'}</button>
+
+          {/* Documents */}
+          <div className="space-y-3 border-t border-gray-100 pt-4">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Documents</p>
+
+            {/* Passport doc */}
+            <div>
+              <label className="form-label">Passport Copy (PDF or Photo)</label>
+              <div className="flex items-center gap-2">
+                <input
+                  ref={passportRef}
+                  type="file"
+                  accept="image/*,.pdf"
+                  className="hidden"
+                  onChange={e => { const f = e.target.files?.[0]; if (f) handleDocUpload(f, 'passport'); }}
+                />
+                <button
+                  type="button"
+                  disabled={docUploading === 'passport'}
+                  onClick={() => passportRef.current?.click()}
+                  className="btn btn-outline btn-sm text-xs">
+                  {docUploading === 'passport' ? '⏳ Uploading…' : editPassportUrl ? '🔄 Re-upload' : '📎 Upload'}
+                </button>
+                {editPassportUrl && (
+                  <button type="button" onClick={() => setEditPassportUrl('')} className="text-xs text-danger hover:underline">Remove</button>
+                )}
+              </div>
+              {editPassportUrl && <DocPreview url={editPassportUrl} label="Passport" />}
+            </div>
+
+            {/* Permit doc */}
+            <div>
+              <label className="form-label">Work Permit Copy (PDF or Photo)</label>
+              <div className="flex items-center gap-2">
+                <input
+                  ref={permitRef}
+                  type="file"
+                  accept="image/*,.pdf"
+                  className="hidden"
+                  onChange={e => { const f = e.target.files?.[0]; if (f) handleDocUpload(f, 'permit'); }}
+                />
+                <button
+                  type="button"
+                  disabled={docUploading === 'permit'}
+                  onClick={() => permitRef.current?.click()}
+                  className="btn btn-outline btn-sm text-xs">
+                  {docUploading === 'permit' ? '⏳ Uploading…' : editPermitUrl ? '🔄 Re-upload' : '📎 Upload'}
+                </button>
+                {editPermitUrl && (
+                  <button type="button" onClick={() => setEditPermitUrl('')} className="text-xs text-danger hover:underline">Remove</button>
+                )}
+              </div>
+              {editPermitUrl && <DocPreview url={editPermitUrl} label="Permit" />}
+            </div>
+          </div>
+
+          <div className="flex gap-3 pt-1">
+            <button className="btn btn-primary" onClick={saveEdit} disabled={saving || !!docUploading}>
+              {saving ? 'Saving…' : 'Save Changes'}
+            </button>
             <button className="btn btn-secondary" onClick={() => setEditing(false)}>Cancel</button>
           </div>
         </div>
