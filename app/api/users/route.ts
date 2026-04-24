@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
 
   const { data, error } = await supabase
     .from('users')
-    .select('id, username, role, employee_id, active, created_at, employees(id, full_name, rank, daily_rate, permit_expire, status)')
+    .select('id, username, role, employee_id, active, created_at, employees(id, full_name, rank, daily_rate, phone, passport_no, permit_no, permit_expire, date_of_birth, bank_name, bank_account, passport_doc_url, permit_doc_url, status)')
     .is('deleted_at', null)
     .order('created_at', { ascending: false });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
