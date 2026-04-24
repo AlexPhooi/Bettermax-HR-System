@@ -1,8 +1,25 @@
 'use client';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { formatRM, formatDate, getCurrentMonth } from '@/lib/utils';
 
-interface SalaryRow {
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface HistoryRecord {
+  id: string;
+  employee_id: string;
+  month: string;
+  total_days: number;
+  daily_rate: number;
+  base_salary: number;
+  total_site_bonus: number;
+  gross_salary: number;
+  total_advances: number;
+  net_salary: number;
+  payment_slip_url: string | null;
+  employees: { full_name: string; bank_name: string | null; bank_account: string | null } | null;
+}
+
+interface CalcRow {
   employee_id: string;
   full_name: string;
   total_days: number;
@@ -14,388 +31,528 @@ interface SalaryRow {
   total_advances: number;
   net_salary: number;
   attendance_days: number;
-  site_bonus_balance: number;
   bank_name: string | null;
   bank_account: string | null;
 }
 
-interface SalaryResult {
-  month: string;
-  payment_due: string;
-  data: SalaryRow[];
-}
+interface CalcResult { month: string; payment_due: string; data: CalcRow[] }
 
-interface SalaryRecord {
-  id: string;
-  payment_slip_url: string | null;
-}
+type Section  = 'history' | 'current';
+type SortBy   = 'none' | 'name' | 'rank';
+type SlipRec  = { id: string; payment_slip_url: string | null };
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function SalaryPage() {
-  const [month, setMonth]             = useState(getCurrentMonth());
-  const [result, setResult]           = useState<SalaryResult | null>(null);
-  const [loading, setLoading]         = useState(false);
-  const [calculated, setCalculated]   = useState(false);
-  const [isFinalized, setIsFinalized] = useState(false);
-  const [alertMsg, setAlertMsg]       = useState('');
-  const [alertType, setAlertType]     = useState<'success' | 'danger' | 'warning'>('success');
-  const [finalizing, setFinalizing]   = useState(false);
-  const [recordMap, setRecordMap]     = useState<Record<string, SalaryRecord>>({});
-  const [uploading, setUploading]     = useState<Record<string, boolean>>({});
+  const curMonth = getCurrentMonth();
+
+  // Data
+  const [history,     setHistory]     = useState<HistoryRecord[]>([]);
+  const [current,     setCurrent]     = useState<CalcResult | null>(null);
+  const [curRecordMap, setCurRecordMap] = useState<Record<string, SlipRec>>({});
+  const [loading,     setLoading]     = useState(true);
+  const [curFinalized, setCurFinalized] = useState(false);
+  const [finalizing,  setFinalizing]  = useState(false);
+
+  // View
+  const [view,    setView]    = useState<'overview' | 'detail'>('overview');
+  const [section, setSection] = useState<Section>('history');
+
+  // Filter
+  const [filterMonth, setFilterMonth] = useState('all');
+  const [sortBy,      setSortBy]      = useState<SortBy>('none');
+  const [applied,     setApplied]     = useState(false);
+
+  // Slip upload
+  const [uploading, setUploading] = useState<Record<string, boolean>>({});
   const fileRefs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  // Alert
+  const [alertMsg,  setAlertMsg]  = useState('');
+  const [alertType, setAlertType] = useState<'success' | 'danger' | 'warning'>('success');
 
   function showAlert(msg: string, type: 'success' | 'danger' | 'warning' = 'success') {
     setAlertMsg(msg); setAlertType(type);
     setTimeout(() => setAlertMsg(''), 5000);
   }
 
-  async function calculate() {
-    setLoading(true); setCalculated(false); setIsFinalized(false);
-    setResult(null); setRecordMap({});
-    try {
-      const res = await fetch(`/api/salary/calculate?month=${month}`);
-      const data = await res.json();
-      if (!res.ok) { showAlert(data.error, 'danger'); return; }
-      setResult(data);
-      setCalculated(true);
-      const recRes = await fetch(`/api/salary/records?month=${month}`);
-      const recData = await recRes.json();
-      if (Array.isArray(recData) && recData.length > 0) {
-        setIsFinalized(true);
-        const map: Record<string, SalaryRecord> = {};
-        for (const r of recData) map[r.employee_id] = { id: r.id, payment_slip_url: r.payment_slip_url };
-        setRecordMap(map);
-      }
-    } finally { setLoading(false); }
-  }
+  // ── Load on mount ────────────────────────────────────────────────────────────
+  useEffect(() => {
+    async function load() {
+      setLoading(true);
+      try {
+        const [histRes, calcRes, recRes] = await Promise.all([
+          fetch('/api/salary/records').then(r => r.json()),
+          fetch(`/api/salary/calculate?month=${curMonth}`).then(r => r.json()),
+          fetch(`/api/salary/records?month=${curMonth}`).then(r => r.json()),
+        ]);
+        if (Array.isArray(histRes)) setHistory(histRes);
+        if (calcRes?.data) setCurrent(calcRes);
+        if (Array.isArray(recRes) && recRes.length > 0) {
+          setCurFinalized(true);
+          const map: Record<string, SlipRec> = {};
+          for (const r of recRes) map[r.employee_id] = { id: r.id, payment_slip_url: r.payment_slip_url };
+          setCurRecordMap(map);
+        }
+      } finally { setLoading(false); }
+    }
+    load();
+  }, [curMonth]);
 
+  // ── Finalize current month ───────────────────────────────────────────────────
   async function finalize() {
-    if (!result) return;
-    if (!confirm(`Finalize salary for ${result.month}? This will overwrite any existing records.`)) return;
+    if (!current) return;
+    if (!confirm(`Finalize salary for ${current.month}?`)) return;
     setFinalizing(true);
     try {
       const res = await fetch('/api/salary/finalize', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ month: result.month, records: result.data }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ month: current.month, records: current.data }),
       });
       const data = await res.json();
       if (!res.ok) { showAlert(data.error, 'danger'); return; }
-      showAlert(`Salary for ${result.month} finalized! Site bonus balances updated.`);
-      setIsFinalized(true);
-      const recRes = await fetch(`/api/salary/records?month=${result.month}`);
-      const recData = await recRes.json();
-      if (Array.isArray(recData)) {
-        const map: Record<string, SalaryRecord> = {};
-        for (const r of recData) map[r.employee_id] = { id: r.id, payment_slip_url: r.payment_slip_url };
-        setRecordMap(map);
+      showAlert(`Salary for ${current.month} finalized!`);
+      setCurFinalized(true);
+      // Refresh records map + history
+      const [recRes, histRes] = await Promise.all([
+        fetch(`/api/salary/records?month=${current.month}`).then(r => r.json()),
+        fetch('/api/salary/records').then(r => r.json()),
+      ]);
+      if (Array.isArray(recRes)) {
+        const map: Record<string, SlipRec> = {};
+        for (const r of recRes) map[r.employee_id] = { id: r.id, payment_slip_url: r.payment_slip_url };
+        setCurRecordMap(map);
       }
+      if (Array.isArray(histRes)) setHistory(histRes);
     } finally { setFinalizing(false); }
   }
 
-  async function handleSlipUpload(employeeId: string, file: File) {
-    const rec = recordMap[employeeId];
-    if (!rec) { showAlert('Finalize salary first before uploading slip.', 'warning'); return; }
-    setUploading(u => ({ ...u, [employeeId]: true }));
+  // ── Slip upload ──────────────────────────────────────────────────────────────
+  async function handleSlipUpload(key: string, recId: string, file: File, isCurrent: boolean) {
+    setUploading(u => ({ ...u, [key]: true }));
     try {
       const form = new FormData();
-      form.append('file', file);
-      form.append('type', 'salary_slip');
-      const upRes = await fetch('/api/upload', { method: 'POST', body: form });
+      form.append('file', file); form.append('type', 'salary_slip');
+      const upRes  = await fetch('/api/upload', { method: 'POST', body: form });
       const upData = await upRes.json();
       if (!upRes.ok) { showAlert(upData.error || 'Upload failed.', 'danger'); return; }
-      const patchRes = await fetch(`/api/salary/records/${rec.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+
+      const patchRes = await fetch(`/api/salary/records/${recId}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ payment_slip_url: upData.url }),
       });
-      if (!patchRes.ok) { showAlert('Failed to save slip URL.', 'danger'); return; }
-      setRecordMap(m => ({ ...m, [employeeId]: { ...m[employeeId], payment_slip_url: upData.url } }));
+      if (!patchRes.ok) { showAlert('Failed to save slip.', 'danger'); return; }
+
       showAlert('Payment slip uploaded!');
-    } finally {
-      setUploading(u => ({ ...u, [employeeId]: false }));
-    }
+      if (isCurrent) {
+        setCurRecordMap(m => ({ ...m, [key]: { ...m[key], payment_slip_url: upData.url } }));
+      } else {
+        setHistory(h => h.map(r => r.id === recId ? { ...r, payment_slip_url: upData.url } : r));
+      }
+    } finally { setUploading(u => ({ ...u, [key]: false })); }
   }
 
-  const totals = result ? {
-    total_days:       result.data.reduce((s, r) => s + r.total_days,       0),
-    base_salary:      result.data.reduce((s, r) => s + r.base_salary,      0),
-    total_site_bonus: result.data.reduce((s, r) => s + r.total_site_bonus, 0),
-    gross_salary:     result.data.reduce((s, r) => s + r.gross_salary,     0),
-    total_advances:   result.data.reduce((s, r) => s + r.total_advances,   0),
-    net_salary:       result.data.reduce((s, r) => s + r.net_salary,       0),
-  } : null;
+  // ── Derived: history totals ──────────────────────────────────────────────────
+  // Exclude current month from history cards
+  const pastHistory = useMemo(() => history.filter(r => r.month !== curMonth), [history, curMonth]);
+  const totalPaid   = useMemo(() =>
+    pastHistory.filter(r => r.payment_slip_url).reduce((s, r) => s + Number(r.net_salary), 0),
+    [pastHistory]);
+  const totalUnpaid = useMemo(() =>
+    pastHistory.filter(r => !r.payment_slip_url).reduce((s, r) => s + Number(r.net_salary), 0),
+    [pastHistory]);
 
-  const hasSiteBonus = result?.data.some(r => r.total_site_bonus > 0);
+  // ── Derived: current month totals ───────────────────────────────────────────
+  const curGross   = useMemo(() => current?.data.reduce((s, r) => s + r.gross_salary,   0) ?? 0, [current]);
+  const curAdvance = useMemo(() => current?.data.reduce((s, r) => s + r.total_advances, 0) ?? 0, [current]);
+  const curNet     = useMemo(() => current?.data.reduce((s, r) => s + r.net_salary,     0) ?? 0, [current]);
 
-  return (
-    <div className="p-4 md:p-6 max-w-7xl mx-auto">
+  // ── Distinct past months for filter dropdown ─────────────────────────────────
+  const pastMonths = useMemo(() =>
+    [...new Set(pastHistory.map(r => r.month))].sort((a, b) => b.localeCompare(a)),
+    [pastHistory]);
 
-      {/* ── Print styles ── */}
-      <style>{`
-        @media print {
-          @page { margin: 1.2cm 1.5cm; size: A4 landscape; }
-          nav, .no-print { display: none !important; }
-          .print-letterhead { display: block !important; }
-          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        }
-        .print-letterhead { display: none; }
-      `}</style>
+  // ── Filtered + sorted rows for detail view ───────────────────────────────────
+  const detailRows = useMemo(() => {
+    if (section === 'history') {
+      let rows = applied && filterMonth !== 'all'
+        ? pastHistory.filter(r => r.month === filterMonth)
+        : pastHistory;
+      if (sortBy === 'name') rows = [...rows].sort((a, b) => (a.employees?.full_name ?? '').localeCompare(b.employees?.full_name ?? ''));
+      if (sortBy === 'rank') rows = [...rows].sort((a, b) => Number(b.daily_rate) - Number(a.daily_rate));
+      return rows;
+    } else {
+      // Current month — sort the calc rows
+      let rows = current?.data ?? [];
+      if (sortBy === 'name') rows = [...rows].sort((a, b) => a.full_name.localeCompare(b.full_name));
+      if (sortBy === 'rank') rows = [...rows].sort((a, b) => b.daily_rate - a.daily_rate);
+      return rows;
+    }
+  }, [section, applied, filterMonth, sortBy, pastHistory, current]);
 
-      {/* ── Letterhead (print only) ── */}
-      <div className="print-letterhead pb-4 mb-5" style={{ borderBottom: '2px solid #1e3a5f' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <div>
-            <div style={{ fontSize: '20px', fontWeight: 800, color: '#1e3a5f' }}>🏢 Bettermax Enterprise HR</div>
-            <div style={{ fontSize: '13px', color: '#6b7280', marginTop: '2px' }}>Internal Salary Report</div>
-          </div>
-          <div style={{ textAlign: 'right', fontSize: '12px', color: '#6b7280', lineHeight: '1.6' }}>
-            <div><strong>Month:</strong> {result?.month || month}</div>
-            <div><strong>Generated:</strong> {new Date().toLocaleDateString('en-MY', { day: '2-digit', month: 'long', year: 'numeric' })}</div>
-            {result && <div><strong>Payment Due:</strong> {formatDate(result.payment_due)}</div>}
-            {isFinalized && <div style={{ color: '#16a34a', fontWeight: 600 }}>✓ Finalized</div>}
-          </div>
-        </div>
+  // ── Summary totals for letterhead ───────────────────────────────────────────
+  const summaryTotals = useMemo(() => {
+    if (section === 'history') {
+      const rows = detailRows as HistoryRecord[];
+      return {
+        gross:   rows.reduce((s, r) => s + Number(r.gross_salary),   0),
+        advance: rows.reduce((s, r) => s + Number(r.total_advances), 0),
+        net:     rows.reduce((s, r) => s + Number(r.net_salary),     0),
+      };
+    } else {
+      const rows = detailRows as CalcRow[];
+      return {
+        gross:   rows.reduce((s, r) => s + r.gross_salary,   0),
+        advance: rows.reduce((s, r) => s + r.total_advances, 0),
+        net:     rows.reduce((s, r) => s + r.net_salary,     0),
+      };
+    }
+  }, [detailRows, section]);
+
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  function openDetail(s: Section) {
+    setSection(s);
+    setFilterMonth('all');
+    setSortBy('none');
+    setApplied(false);
+    setView('detail');
+  }
+
+  // ─── Print styles ─────────────────────────────────────────────────────────────
+  const printStyles = `
+    @media print {
+      @page { margin: 1.2cm 1.5cm; size: A4 landscape; }
+      nav, .no-print { display: none !important; }
+      .print-show { display: block !important; }
+      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
+    .print-show { display: none; }
+  `;
+
+  // ─── OVERVIEW ─────────────────────────────────────────────────────────────────
+  if (loading) return (
+    <div className="p-6 max-w-4xl mx-auto">
+      <h1 className="text-2xl font-bold text-primary mb-6">Salary</h1>
+      <div className="grid grid-cols-2 gap-4">
+        {[1,2].map(i => <div key={i} className="card animate-pulse h-44" />)}
       </div>
+    </div>
+  );
 
-      {/* ── Header ── */}
-      <div className="flex items-center justify-between mb-6 flex-wrap gap-3 no-print">
-        <h1 className="text-2xl font-bold text-primary">Salary Calculator</h1>
-        <div className="flex gap-2 flex-wrap">
-          {calculated && !isFinalized && (
-            <button className="btn btn-success" onClick={finalize} disabled={finalizing}>
-              {finalizing ? 'Finalizing…' : '✓ Finalize Salary'}
-            </button>
-          )}
-          {isFinalized && (
-            <span className="badge bg-green-100 text-green-700 px-3 py-1.5 text-sm font-semibold">✓ Finalized</span>
-          )}
-          <button className="btn btn-secondary" onClick={() => window.print()}>🖨 Print</button>
-        </div>
-      </div>
+  // ─── DETAIL VIEW ──────────────────────────────────────────────────────────────
+  if (view === 'detail') {
+    const isHistory = section === 'history';
+    const histRows  = detailRows as HistoryRecord[];
+    const calcRows  = detailRows as CalcRow[];
+    const label     = isHistory ? 'History' : `Current Month (${curMonth})`;
 
-      {alertMsg && <div className={`alert alert-${alertType} no-print`}>{alertMsg}</div>}
+    return (
+      <div className="p-4 md:p-6 max-w-full mx-auto">
+        <style>{printStyles}</style>
 
-      {/* ── Month selector ── */}
-      <div className="card p-4 mb-4 no-print">
-        <div className="flex items-end gap-3 flex-wrap">
-          <div>
-            <label className="form-label">Salary Month</label>
-            <input type="month" className="form-control" value={month}
-              onChange={e => { setMonth(e.target.value); setCalculated(false); setResult(null); setRecordMap({}); }} />
-          </div>
-          <button className="btn btn-primary" onClick={calculate} disabled={loading}>
-            {loading ? 'Calculating…' : '⚡ Calculate'}
-          </button>
-        </div>
-        <p className="text-xs text-gray-400 mt-2">⚠️ Only <strong>approved</strong> attendance records are included.</p>
-      </div>
-
-      {result && (
-        <div className="alert alert-warning mb-4 no-print">
-          <strong>Payment Due:</strong> {formatDate(result.payment_due)} (7th of following month)
-          {isFinalized && <span className="ml-3 text-green-700 font-semibold">— This month has been finalized</span>}
-        </div>
-      )}
-
-      {loading && (
-        <div className="card animate-pulse no-print">
-          <div className="space-y-3">
-            {Array(5).fill(0).map((_, i) => <div key={i} className="h-10 bg-gray-100 rounded" />)}
+        {/* Print letterhead */}
+        <div className="print-show pb-4 mb-4" style={{ borderBottom: '2px solid #1e3a5f' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: '#1e3a5f' }}>🏢 Bettermax Enterprise HR</div>
+              <div style={{ fontSize: 12, color: '#6b7280' }}>Salary Report — {label}</div>
+            </div>
+            <div style={{ textAlign: 'right', fontSize: 12, color: '#6b7280' }}>
+              <div>Generated: {new Date().toLocaleDateString('en-MY', { day: '2-digit', month: 'long', year: 'numeric' })}</div>
+              {!isHistory && current && <div>Payment Due: {formatDate(current.payment_due)}</div>}
+            </div>
           </div>
         </div>
-      )}
 
-      {/* ── Table ── */}
-      {result && !loading && (
-        <div className="card p-0 overflow-hidden print:shadow-none print:border-0">
-          <div className="px-6 py-3 border-b border-bg flex items-center justify-between">
-            <span className="text-sm font-semibold text-primary">
-              {result.data.length} employee{result.data.length !== 1 ? 's' : ''} — {result.month}
-            </span>
-            {isFinalized && <span className="badge bg-green-100 text-green-700 text-xs">✓ Finalized</span>}
+        {/* Back + title */}
+        <div className="flex items-center gap-3 mb-5 no-print flex-wrap">
+          <button className="btn btn-secondary text-sm py-1.5 px-3" onClick={() => setView('overview')}>← Back</button>
+          <h1 className="text-xl font-bold text-primary">Salary — {label}</h1>
+          <div className="ml-auto flex gap-2">
+            {!isHistory && !curFinalized && (
+              <button className="btn btn-success text-sm" onClick={finalize} disabled={finalizing}>
+                {finalizing ? 'Finalizing…' : '✓ Finalize'}
+              </button>
+            )}
+            {!isHistory && curFinalized && (
+              <span className="badge bg-green-100 text-green-700 px-3 py-1.5 text-sm">✓ Finalized</span>
+            )}
+            <button className="btn btn-secondary text-sm" onClick={() => window.print()}>🖨 Print</button>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm" style={{ minWidth: 1100 }}>
-              <thead>
-                {/* ── Section group headers ── */}
-                <tr>
-                  {/* Profile */}
-                  <th colSpan={3} className="px-4 py-2 text-center text-xs font-bold tracking-widest uppercase text-white"
-                    style={{ background: '#1e3a5f', borderRight: '2px solid rgba(255,255,255,0.15)' }}>
-                    👤 Profile
-                  </th>
-                  {/* Saving Account */}
-                  <th colSpan={6} className="px-4 py-2 text-center text-xs font-bold tracking-widest uppercase text-white"
-                    style={{ background: '#166534', borderRight: '2px solid rgba(255,255,255,0.15)' }}>
-                    🧹 Saving Account
-                  </th>
-                  {/* Monthly Salary */}
-                  <th colSpan={5} className="px-4 py-2 text-center text-xs font-bold tracking-widest uppercase text-white"
-                    style={{ background: '#1e40af' }}>
-                    💰 Monthly Salary
-                  </th>
-                </tr>
-                {/* ── Column sub-headers ── */}
-                <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
-                  {/* Profile cols */}
-                  <th className="table-th text-left" style={{ borderRight: '1px solid #e2e8f0' }}>Name</th>
-                  <th className="table-th text-right" style={{ borderRight: '1px solid #e2e8f0' }}>Rate</th>
-                  <th className="table-th text-right" style={{ borderRight: '2px solid #cbd5e1' }}>Gong</th>
-                  {/* Saving Account cols */}
-                  <th className="table-th text-right" style={{ borderRight: '1px solid #e2e8f0' }}>Current</th>
-                  <th className="table-th text-right" style={{ borderRight: '1px solid #e2e8f0' }}>Bonus</th>
-                  <th className="table-th text-right" style={{ borderRight: '1px solid #e2e8f0' }}>Withdrawal</th>
-                  <th className="table-th text-left" style={{ borderRight: '1px solid #e2e8f0' }}>Transfer To</th>
-                  <th className="table-th text-center no-print" style={{ borderRight: '1px solid #e2e8f0' }}>Slip</th>
-                  <th className="table-th text-right" style={{ borderRight: '2px solid #cbd5e1' }}>New Balance</th>
-                  {/* Monthly Salary cols */}
-                  <th className="table-th text-right" style={{ borderRight: '1px solid #e2e8f0' }}>Gross</th>
-                  <th className="table-th text-right" style={{ borderRight: '1px solid #e2e8f0' }}>Advance</th>
-                  <th className="table-th text-right" style={{ borderRight: '1px solid #e2e8f0' }}>Net</th>
-                  <th className="table-th text-left" style={{ borderRight: '1px solid #e2e8f0' }}>Transfer To</th>
-                  <th className="table-th text-center no-print">Slip</th>
-                </tr>
-              </thead>
-              <tbody>
-                {result.data.map((row, idx) => {
-                  const rec = recordMap[row.employee_id];
-                  const isUploading = uploading[row.employee_id];
-                  const newBalance = Math.round((row.site_bonus_balance + row.total_site_bonus) * 100) / 100;
-                  const rowBg = idx % 2 === 0 ? '#ffffff' : '#f8fafc';
-                  const tdStyle = (extra?: string) =>
-                    `px-3 py-2.5 text-sm align-middle ${extra ?? ''}`;
-                  return (
-                    <tr key={row.employee_id} style={{ background: rowBg, borderBottom: '1px solid #f1f5f9' }}>
+        </div>
 
-                      {/* ── Profile ── */}
-                      <td className={tdStyle('font-medium text-gray-800')} style={{ borderRight: '1px solid #e2e8f0' }}>
-                        {row.full_name}
-                      </td>
-                      <td className={tdStyle('text-right text-gray-600')} style={{ borderRight: '1px solid #e2e8f0' }}>
-                        {formatRM(row.daily_rate)}/d
-                      </td>
-                      <td className={tdStyle('text-right')} style={{ borderRight: '2px solid #cbd5e1' }}>
-                        <span className="font-semibold text-primary">{row.total_days.toFixed(2)} 工</span>
-                        {row.total_ot_hours > 0 && (
-                          <div className="text-xs text-orange-500">+{row.total_ot_hours.toFixed(1)}h OT</div>
-                        )}
-                      </td>
+        {alertMsg && <div className={`alert alert-${alertType} mb-4 no-print`}>{alertMsg}</div>}
 
-                      {/* ── Saving Account ── */}
-                      <td className={tdStyle('text-right text-gray-600')} style={{ borderRight: '1px solid #e2e8f0' }}>
-                        {formatRM(row.site_bonus_balance)}
-                      </td>
-                      <td className={tdStyle('text-right')} style={{ borderRight: '1px solid #e2e8f0' }}>
-                        {row.total_site_bonus > 0
-                          ? <span className="text-green-600 font-semibold">+{formatRM(row.total_site_bonus)}</span>
-                          : <span className="text-gray-300">-</span>}
-                      </td>
-                      <td className={tdStyle('text-right text-gray-300')} style={{ borderRight: '1px solid #e2e8f0' }}>-</td>
-                      <td className={tdStyle('text-left text-gray-500 text-xs')} style={{ borderRight: '1px solid #e2e8f0', maxWidth: 120 }}>
-                        {row.bank_name || row.bank_account
-                          ? <span>{row.bank_name && <span className="font-medium text-gray-700 block">{row.bank_name}</span>}{row.bank_account}</span>
-                          : <span className="text-gray-300">-</span>}
-                      </td>
-                      <td className={tdStyle('text-center no-print text-gray-300')} style={{ borderRight: '1px solid #e2e8f0' }}>-</td>
-                      <td className={tdStyle('text-right font-semibold text-green-700')} style={{ borderRight: '2px solid #cbd5e1' }}>
-                        {formatRM(newBalance)}
-                      </td>
+        {/* Filter bar */}
+        <div className="card p-4 mb-4 no-print">
+          <div className="flex items-end gap-3 flex-wrap">
+            {isHistory && (
+              <div>
+                <label className="form-label">Month</label>
+                <select className="form-control" value={filterMonth} onChange={e => setFilterMonth(e.target.value)}>
+                  <option value="all">All</option>
+                  {pastMonths.map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </div>
+            )}
+            <div>
+              <label className="form-label">Sort By</label>
+              <select className="form-control" value={sortBy} onChange={e => setSortBy(e.target.value as SortBy)}>
+                <option value="none">None</option>
+                <option value="name">Name</option>
+                <option value="rank">Rank (Rate)</option>
+              </select>
+            </div>
+            <button className="btn btn-primary" onClick={() => setApplied(true)}>Apply</button>
+            {applied && (
+              <button className="btn btn-secondary" onClick={() => { setFilterMonth('all'); setSortBy('none'); setApplied(false); }}>
+                Clear
+              </button>
+            )}
+          </div>
+        </div>
 
-                      {/* ── Monthly Salary ── */}
-                      <td className={tdStyle('text-right font-semibold text-accent')} style={{ borderRight: '1px solid #e2e8f0' }}>
-                        {formatRM(row.gross_salary)}
-                      </td>
-                      <td className={tdStyle('text-right')} style={{ borderRight: '1px solid #e2e8f0' }}>
-                        {row.total_advances > 0
-                          ? <span className="text-danger font-medium">({formatRM(row.total_advances)})</span>
-                          : <span className="text-gray-300">-</span>}
-                      </td>
-                      <td className={tdStyle(`text-right font-bold ${row.net_salary < 0 ? 'text-danger' : 'text-accent'}`)} style={{ borderRight: '1px solid #e2e8f0' }}>
-                        {formatRM(row.net_salary)}
-                      </td>
-                      <td className={tdStyle('text-left text-gray-500 text-xs')} style={{ borderRight: '1px solid #e2e8f0', maxWidth: 120 }}>
-                        {row.bank_name || row.bank_account
-                          ? <span>{row.bank_name && <span className="font-medium text-gray-700 block">{row.bank_name}</span>}{row.bank_account}</span>
-                          : <span className="text-gray-300">-</span>}
-                      </td>
-                      {/* Salary slip upload */}
-                      <td className={tdStyle('text-center no-print')}>
-                        <input type="file" accept="image/*,.pdf" className="hidden"
-                          ref={el => { fileRefs.current[row.employee_id] = el; }}
-                          onChange={e => {
-                            const file = e.target.files?.[0];
-                            if (file) handleSlipUpload(row.employee_id, file);
-                            e.target.value = '';
-                          }} />
-                        {isFinalized && rec ? (
-                          rec.payment_slip_url ? (
+        {/* Summary letterhead */}
+        <div className="card p-4 mb-4" style={{ background: 'rgba(30,58,95,0.04)', border: '1px solid rgba(30,58,95,0.12)' }}>
+          <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
+            {isHistory ? (filterMonth === 'all' ? 'All History Summary' : `Summary — ${filterMonth}`) : `${curMonth} Summary`}
+          </div>
+          <div className="grid grid-cols-3 gap-4 text-center">
+            <div>
+              <div className="text-xs text-gray-400 mb-1">Total Gross</div>
+              <div className="text-lg font-bold text-accent">{formatRM(summaryTotals.gross)}</div>
+            </div>
+            <div>
+              <div className="text-xs text-gray-400 mb-1">Total Advance</div>
+              <div className="text-lg font-bold text-danger">
+                {summaryTotals.advance > 0 ? `(${formatRM(summaryTotals.advance)})` : '-'}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs text-gray-400 mb-1">Total Net</div>
+              <div className="text-lg font-bold text-primary">{formatRM(summaryTotals.net)}</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Detail table */}
+        {detailRows.length === 0 ? (
+          <div className="card py-12 text-center text-gray-400">No records found.</div>
+        ) : (
+          <div className="card p-0 overflow-hidden print:shadow-none print:border-0">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm" style={{ minWidth: 900 }}>
+                <thead>
+                  <tr style={{ background: '#1e3a5f' }}>
+                    {isHistory && <th className="px-3 py-2.5 text-left text-xs text-white font-semibold">Month</th>}
+                    <th className="px-3 py-2.5 text-left text-xs text-white font-semibold">Name</th>
+                    <th className="px-3 py-2.5 text-right text-xs text-white font-semibold">Rate</th>
+                    <th className="px-3 py-2.5 text-right text-xs text-white font-semibold">Days 工</th>
+                    <th className="px-3 py-2.5 text-right text-xs text-white font-semibold">OT</th>
+                    <th className="px-3 py-2.5 text-right text-xs text-white font-semibold">Gross</th>
+                    <th className="px-3 py-2.5 text-right text-xs text-white font-semibold">Advance</th>
+                    <th className="px-3 py-2.5 text-right text-xs text-white font-semibold">Net</th>
+                    <th className="px-3 py-2.5 text-left text-xs text-white font-semibold">Transfer To</th>
+                    <th className="px-3 py-2.5 text-center text-xs text-white font-semibold no-print">Slip</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {isHistory ? histRows.map((row, idx) => {
+                    const key = row.id;
+                    const isUp = uploading[key];
+                    return (
+                      <tr key={key} style={{ background: idx % 2 === 0 ? '#fff' : '#f8fafc', borderBottom: '1px solid #f1f5f9' }}>
+                        <td className="px-3 py-2.5 text-xs text-gray-500 font-mono">{row.month}</td>
+                        <td className="px-3 py-2.5 font-medium text-gray-800">{row.employees?.full_name ?? '-'}</td>
+                        <td className="px-3 py-2.5 text-right text-gray-600">{formatRM(Number(row.daily_rate))}</td>
+                        <td className="px-3 py-2.5 text-right font-semibold text-primary">{Number(row.total_days).toFixed(2)}</td>
+                        <td className="px-3 py-2.5 text-right text-gray-400">-</td>
+                        <td className="px-3 py-2.5 text-right text-accent font-semibold">{formatRM(Number(row.gross_salary))}</td>
+                        <td className="px-3 py-2.5 text-right">
+                          {Number(row.total_advances) > 0
+                            ? <span className="text-danger">({formatRM(Number(row.total_advances))})</span>
+                            : <span className="text-gray-300">-</span>}
+                        </td>
+                        <td className={`px-3 py-2.5 text-right font-bold ${Number(row.net_salary) < 0 ? 'text-danger' : 'text-accent'}`}>
+                          {formatRM(Number(row.net_salary))}
+                        </td>
+                        <td className="px-3 py-2.5 text-xs text-gray-500">
+                          {row.employees?.bank_name && <div className="font-medium text-gray-700">{row.employees.bank_name}</div>}
+                          {row.employees?.bank_account ?? '-'}
+                        </td>
+                        <td className="px-3 py-2.5 text-center no-print">
+                          <input type="file" accept="image/*,.pdf" className="hidden"
+                            ref={el => { fileRefs.current[key] = el; }}
+                            onChange={e => { const f = e.target.files?.[0]; if (f) handleSlipUpload(key, row.id, f, false); e.target.value = ''; }} />
+                          {row.payment_slip_url ? (
                             <div className="flex items-center justify-center gap-1">
-                              <a href={rec.payment_slip_url} target="_blank" rel="noopener noreferrer"
-                                className="text-xs text-blue-600 underline">📄</a>
-                              <button className="text-xs text-gray-400 hover:text-gray-600"
-                                onClick={() => fileRefs.current[row.employee_id]?.click()}
-                                disabled={isUploading}>
-                                {isUploading ? '…' : '↺'}
+                              <a href={row.payment_slip_url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 underline">📄</a>
+                              <button className="text-xs text-gray-400 hover:text-gray-600" onClick={() => fileRefs.current[key]?.click()} disabled={isUp}>
+                                {isUp ? '…' : '↺'}
                               </button>
                             </div>
                           ) : (
-                            <button className="text-xs text-gray-400 hover:text-primary"
-                              onClick={() => fileRefs.current[row.employee_id]?.click()}
-                              disabled={isUploading} title="Upload payment slip">
-                              {isUploading ? '…' : '📎 Upload'}
+                            <button className="text-xs text-gray-400 hover:text-primary" onClick={() => fileRefs.current[key]?.click()} disabled={isUp}>
+                              {isUp ? '…' : '📎 Upload'}
                             </button>
-                          )
-                        ) : (
-                          <span className="text-gray-300 text-xs">—</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-
-              {/* ── Totals footer ── */}
-              {totals && (
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  }) : calcRows.map((row, idx) => {
+                    const key = row.employee_id;
+                    const rec = curRecordMap[key];
+                    const isUp = uploading[key];
+                    return (
+                      <tr key={key} style={{ background: idx % 2 === 0 ? '#fff' : '#f8fafc', borderBottom: '1px solid #f1f5f9' }}>
+                        <td className="px-3 py-2.5 font-medium text-gray-800">{row.full_name}</td>
+                        <td className="px-3 py-2.5 text-right text-gray-600">{formatRM(row.daily_rate)}</td>
+                        <td className="px-3 py-2.5 text-right font-semibold text-primary">{row.total_days.toFixed(2)}</td>
+                        <td className="px-3 py-2.5 text-right text-orange-500">
+                          {row.total_ot_hours > 0 ? `+${row.total_ot_hours.toFixed(1)}h` : <span className="text-gray-300">-</span>}
+                        </td>
+                        <td className="px-3 py-2.5 text-right text-accent font-semibold">{formatRM(row.gross_salary)}</td>
+                        <td className="px-3 py-2.5 text-right">
+                          {row.total_advances > 0
+                            ? <span className="text-danger">({formatRM(row.total_advances)})</span>
+                            : <span className="text-gray-300">-</span>}
+                        </td>
+                        <td className={`px-3 py-2.5 text-right font-bold ${row.net_salary < 0 ? 'text-danger' : 'text-accent'}`}>
+                          {formatRM(row.net_salary)}
+                        </td>
+                        <td className="px-3 py-2.5 text-xs text-gray-500">
+                          {row.bank_name && <div className="font-medium text-gray-700">{row.bank_name}</div>}
+                          {row.bank_account ?? <span className="text-gray-300">-</span>}
+                        </td>
+                        <td className="px-3 py-2.5 text-center no-print">
+                          <input type="file" accept="image/*,.pdf" className="hidden"
+                            ref={el => { fileRefs.current[key] = el; }}
+                            onChange={e => { const f = e.target.files?.[0]; if (f && rec) handleSlipUpload(key, rec.id, f, true); e.target.value = ''; }} />
+                          {curFinalized && rec ? (
+                            rec.payment_slip_url ? (
+                              <div className="flex items-center justify-center gap-1">
+                                <a href={rec.payment_slip_url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 underline">📄</a>
+                                <button className="text-xs text-gray-400 hover:text-gray-600" onClick={() => fileRefs.current[key]?.click()} disabled={isUp}>
+                                  {isUp ? '…' : '↺'}
+                                </button>
+                              </div>
+                            ) : (
+                              <button className="text-xs text-gray-400 hover:text-primary" onClick={() => fileRefs.current[key]?.click()} disabled={isUp}>
+                                {isUp ? '…' : '📎 Upload'}
+                              </button>
+                            )
+                          ) : (
+                            <span className="text-gray-300 text-xs">{curFinalized ? '—' : 'Finalize first'}</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                {/* Totals footer */}
                 <tfoot>
                   <tr style={{ background: '#f0f4f8', borderTop: '2px solid #cbd5e1', fontWeight: 700 }}>
-                    <td className="px-3 py-2.5 text-sm text-primary" colSpan={2}>TOTAL</td>
-                    <td className="px-3 py-2.5 text-sm text-right text-primary" style={{ borderRight: '2px solid #cbd5e1' }}>
-                      {totals.total_days.toFixed(2)} 工
+                    {isHistory && <td className="px-3 py-2.5 text-xs text-gray-500">TOTAL</td>}
+                    <td className="px-3 py-2.5 text-sm text-primary" colSpan={isHistory ? 1 : 2}>TOTAL</td>
+                    <td className="px-3 py-2.5" />
+                    <td className="px-3 py-2.5 text-right text-sm text-primary">
+                      {isHistory
+                        ? histRows.reduce((s, r) => s + Number(r.total_days), 0).toFixed(2)
+                        : calcRows.reduce((s, r) => s + r.total_days, 0).toFixed(2)}
                     </td>
-                    {/* Saving totals */}
-                    <td className="px-3 py-2.5 text-sm text-right text-gray-500" style={{ borderRight: '1px solid #e2e8f0' }}>—</td>
-                    <td className="px-3 py-2.5 text-sm text-right text-green-600" style={{ borderRight: '1px solid #e2e8f0' }}>
-                      {totals.total_site_bonus > 0 ? `+${formatRM(totals.total_site_bonus)}` : '-'}
+                    <td className="px-3 py-2.5" />
+                    <td className="px-3 py-2.5 text-right text-sm text-accent">{formatRM(summaryTotals.gross)}</td>
+                    <td className="px-3 py-2.5 text-right text-sm text-danger">
+                      {summaryTotals.advance > 0 ? `(${formatRM(summaryTotals.advance)})` : '-'}
                     </td>
-                    <td className="px-3 py-2.5" style={{ borderRight: '1px solid #e2e8f0' }} />
-                    <td className="px-3 py-2.5" style={{ borderRight: '1px solid #e2e8f0' }} />
-                    <td className="px-3 py-2.5 no-print" style={{ borderRight: '1px solid #e2e8f0' }} />
-                    <td className="px-3 py-2.5 text-sm text-right text-green-700" style={{ borderRight: '2px solid #cbd5e1' }}>—</td>
-                    {/* Salary totals */}
-                    <td className="px-3 py-2.5 text-sm text-right text-accent" style={{ borderRight: '1px solid #e2e8f0' }}>
-                      {formatRM(totals.gross_salary)}
-                    </td>
-                    <td className="px-3 py-2.5 text-sm text-right text-danger" style={{ borderRight: '1px solid #e2e8f0' }}>
-                      {totals.total_advances > 0 ? `(${formatRM(totals.total_advances)})` : '-'}
-                    </td>
-                    <td className={`px-3 py-2.5 text-sm text-right ${totals.net_salary < 0 ? 'text-danger' : 'text-accent'}`} style={{ borderRight: '1px solid #e2e8f0' }}>
-                      {formatRM(totals.net_salary)}
-                    </td>
-                    <td className="px-3 py-2.5" style={{ borderRight: '1px solid #e2e8f0' }} />
+                    <td className="px-3 py-2.5 text-right text-sm text-accent">{formatRM(summaryTotals.net)}</td>
+                    <td className="px-3 py-2.5" />
                     <td className="px-3 py-2.5 no-print" />
                   </tr>
                 </tfoot>
-              )}
-            </table>
+              </table>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
+    );
+  }
 
-      {!loading && !result && (
-        <div className="card text-center py-12 text-gray-400 no-print">
-          Select a month and click Calculate to generate the salary report.
+  // ─── OVERVIEW ─────────────────────────────────────────────────────────────────
+  return (
+    <div className="p-4 md:p-6 max-w-4xl mx-auto">
+      <style>{printStyles}</style>
+      <h1 className="text-2xl font-bold text-primary mb-6">Salary</h1>
+
+      {alertMsg && <div className={`alert alert-${alertType} mb-4`}>{alertMsg}</div>}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+
+        {/* ── History Card ── */}
+        <div className="card p-5 flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <div className="font-bold text-primary text-base">📜 History</div>
+            <span className="text-xs text-gray-400">{pastMonths.length} month{pastMonths.length !== 1 ? 's' : ''}</span>
+          </div>
+          <div className="space-y-3">
+            <div className="flex justify-between items-center p-3 rounded-lg" style={{ background: 'rgba(22,163,74,0.07)', border: '1px solid rgba(22,163,74,0.15)' }}>
+              <div>
+                <div className="text-xs text-gray-400 mb-0.5">Total Paid</div>
+                <div className="text-xs text-green-600">Slip uploaded</div>
+              </div>
+              <div className="font-bold text-green-700 text-lg">{formatRM(totalPaid)}</div>
+            </div>
+            <div className="flex justify-between items-center p-3 rounded-lg" style={{ background: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.15)' }}>
+              <div>
+                <div className="text-xs text-gray-400 mb-0.5">Total Unpaid</div>
+                <div className="text-xs text-red-400">No slip yet</div>
+              </div>
+              <div className="font-bold text-danger text-lg">{formatRM(totalUnpaid)}</div>
+            </div>
+          </div>
+          <button className="btn btn-primary w-full mt-auto" onClick={() => openDetail('history')}>
+            Details →
+          </button>
         </div>
-      )}
+
+        {/* ── Current Month Card ── */}
+        <div className="card p-5 flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <div className="font-bold text-primary text-base">📅 Current Month</div>
+            <span className="text-xs text-gray-400">{curMonth}</span>
+          </div>
+          <div className="space-y-3">
+            <div className="flex justify-between items-center p-3 rounded-lg" style={{ background: 'rgba(30,58,95,0.05)', border: '1px solid rgba(30,58,95,0.12)' }}>
+              <div>
+                <div className="text-xs text-gray-400 mb-0.5">Total Ongoing</div>
+                <div className="text-xs text-gray-500">Gross salary</div>
+              </div>
+              <div className="font-bold text-primary text-lg">{formatRM(curGross)}</div>
+            </div>
+            <div className="flex justify-between items-center p-3 rounded-lg" style={{ background: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.15)' }}>
+              <div>
+                <div className="text-xs text-gray-400 mb-0.5">Total Advance</div>
+                <div className="text-xs text-red-400">Deductions</div>
+              </div>
+              <div className="font-bold text-danger text-lg">
+                {curAdvance > 0 ? `(${formatRM(curAdvance)})` : formatRM(0)}
+              </div>
+            </div>
+            <div className="flex justify-between items-center p-3 rounded-lg" style={{ background: 'rgba(22,163,74,0.07)', border: '1px solid rgba(22,163,74,0.15)' }}>
+              <div>
+                <div className="text-xs text-gray-400 mb-0.5">Balance</div>
+                <div className="text-xs text-green-600">Net payable</div>
+              </div>
+              <div className="font-bold text-green-700 text-lg">{formatRM(curNet)}</div>
+            </div>
+          </div>
+          <button className="btn btn-primary w-full mt-auto" onClick={() => openDetail('current')}>
+            Details →
+          </button>
+        </div>
+
+      </div>
     </div>
   );
 }

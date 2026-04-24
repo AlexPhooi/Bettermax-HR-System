@@ -6,7 +6,7 @@ export async function GET(req: NextRequest) {
   const user = await getUser(req);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const month = req.nextUrl.searchParams.get('month');
-  let query = supabase.from('salary_records').select('*, employees(full_name)').is('deleted_at', null).order('created_at', { ascending: false });
+  let query = supabase.from('salary_records').select('*, employees(full_name, bank_name, bank_account, daily_rate)').is('deleted_at', null).order('month', { ascending: false });
   if (month) query = query.eq('month', month);
   // Workers only see their own salary records
   if (user.role === 'worker') {
