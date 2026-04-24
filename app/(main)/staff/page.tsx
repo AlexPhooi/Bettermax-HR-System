@@ -68,11 +68,11 @@ const BANKS = [
 ];
 
 const ROLE_CFG: Record<string, { label: string; color: string; icon: string }> = {
-  owner:    { label: 'Owner',    color: 'bg-red-100 text-red-700',      icon: '👑' },
-  admin:    { label: 'Admin',    color: 'bg-purple-100 text-purple-700', icon: '🔑' },
-  approval: { label: 'Approval', color: 'bg-orange-100 text-orange-700', icon: '✅' },
-  editor:   { label: 'Editor',   color: 'bg-blue-100 text-blue-700',    icon: '✏️' },
-  viewer:   { label: 'Viewer',   color: 'bg-green-100 text-green-700',  icon: '👁️' },
+  owner:    { label: 'Owner',    color: 'bg-white text-gray-800 border border-gray-300 shadow-sm', icon: '👑' },
+  admin:    { label: 'Admin',    color: 'bg-amber-400 text-amber-900',                             icon: '🔑' },
+  approval: { label: 'Approval', color: 'bg-slate-300 text-slate-700',                             icon: '✅' },
+  editor:   { label: 'Editor',   color: 'bg-amber-700 text-amber-50',                              icon: '✏️' },
+  viewer:   { label: 'Viewer',   color: 'bg-gray-100 text-gray-500',                               icon: '👁️' },
 };
 
 function RoleBadge({ role }: { role: string }) {
