@@ -169,7 +169,7 @@ export default function SalaryPage() {
 
   // ── Distinct past months for filter dropdown ─────────────────────────────────
   const pastMonths = useMemo(() =>
-    [...new Set(pastHistory.map(r => r.month))].sort((a, b) => b.localeCompare(a)),
+    Array.from(new Set(pastHistory.map(r => r.month))).sort((a, b) => b.localeCompare(a)),
     [pastHistory]);
 
   // ── Filtered + sorted rows for detail view ───────────────────────────────────
