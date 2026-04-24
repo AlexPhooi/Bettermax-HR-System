@@ -33,12 +33,15 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  const [empRes, attRes, expRes, expiredRes, pendingRes] = await Promise.all([
+  const [empRes, attRes, expRes, expiredRes, pendingRes, binStaffRes, binAttRes, binSalaryRes] = await Promise.all([
     supabase.from('employees').select('id', { count: 'exact', head: true }).eq('status', 'active'),
     supabase.from('hr_attendance').select('days_worked, site_bonus, employees(daily_rate)').gte('work_date', start).lte('work_date', end).eq('status', 'approved'),
     supabase.from('employees').select('id, full_name, permit_expire').eq('status', 'active').lte('permit_expire', in60).gte('permit_expire', today).order('permit_expire'),
     supabase.from('employees').select('id, full_name, permit_expire').eq('status', 'active').lt('permit_expire', today).not('permit_expire', 'is', null).order('permit_expire'),
     supabase.from('hr_attendance').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+    supabase.from('users').select('id', { count: 'exact', head: true }).not('deleted_at', 'is', null),
+    supabase.from('hr_attendance').select('id', { count: 'exact', head: true }).not('deleted_at', 'is', null),
+    supabase.from('salary_records').select('id', { count: 'exact', head: true }).not('deleted_at', 'is', null),
   ]);
 
   const totalDays    = (attRes.data || []).reduce((s, a) => s + Number(a.days_worked || 0), 0);
@@ -53,6 +56,9 @@ export async function GET(req: NextRequest) {
     expiring_list: expRes.data || [],
     expired_list: expiredRes.data || [],
     pending_count: pendingRes.count || 0,
+    bin_staff: binStaffRes.count || 0,
+    bin_att: binAttRes.count || 0,
+    bin_salary: binSalaryRes.count || 0,
     current_month: month,
   });
 }

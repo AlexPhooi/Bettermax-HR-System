@@ -71,6 +71,11 @@ export default function SalaryPage() {
   const [alertMsg,  setAlertMsg]  = useState('');
   const [alertType, setAlertType] = useState<'success' | 'danger' | 'warning'>('success');
 
+  // Bin
+  const [binOpen,    setBinOpen]    = useState(false);
+  const [binData,    setBinData]    = useState<{id: string; month: string; net_salary: number; deleted_at: string; employees: {full_name: string} | null}[] | null>(null);
+  const [binLoading, setBinLoading] = useState(false);
+
   function showAlert(msg: string, type: 'success' | 'danger' | 'warning' = 'success') {
     setAlertMsg(msg); setAlertType(type);
     setTimeout(() => setAlertMsg(''), 5000);
@@ -126,6 +131,30 @@ export default function SalaryPage() {
       if (Array.isArray(histRes)) setHistory(histRes);
     } finally { setFinalizing(false); }
   }
+
+  // ── Bin ──────────────────────────────────────────────────────────────────────
+  async function loadBin() {
+    setBinLoading(true);
+    const res = await fetch('/api/bin');
+    const data = await res.json();
+    setBinData(res.ok ? (data.salary || []) : null);
+    setBinLoading(false);
+  }
+
+  async function handleRestoreSalary(id: string) {
+    const res = await fetch('/api/bin/restore', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'salary', id }),
+    });
+    const d = await res.json();
+    if (res.ok) { showAlert('Salary record restored.'); loadBin(); }
+    else showAlert(d.error || 'Restore failed.', 'danger');
+  }
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (binOpen && !binData) loadBin();
+  }, [binOpen]);
 
   // ── Slip upload ──────────────────────────────────────────────────────────────
   async function handleSlipUpload(key: string, recId: string, file: File, isCurrent: boolean) {
@@ -337,6 +366,65 @@ export default function SalaryPage() {
         </div>
 
         {/* Detail table */}
+        {/* ── Bin (detail view) ── */}
+        <div className="mt-8 no-print">
+          <button
+            onClick={() => setBinOpen(b => !b)}
+            className="w-full flex items-center justify-between px-5 py-3 rounded-xl border-2 border-dashed border-gray-300 text-gray-500 hover:border-gray-400 hover:text-gray-600 transition-colors"
+          >
+            <span className="flex items-center gap-2 font-semibold text-sm">
+              🗑️ Bin
+              {binData && binData.length > 0 && (
+                <span className="bg-red-100 text-red-600 text-xs font-bold px-2 py-0.5 rounded-full">{binData.length}</span>
+              )}
+            </span>
+            <span className="text-xs">{binOpen ? '▲ Collapse' : '▼ Expand'}</span>
+          </button>
+          {binOpen && (
+            <div className="mt-3 card p-0 overflow-hidden">
+              <div className="px-5 py-3 border-b border-bg bg-gray-50">
+                <p className="text-xs text-gray-500">Deleted salary records are stored here. Restore to recover.</p>
+              </div>
+              <div className="p-4">
+                {binLoading ? (
+                  <div className="py-8 text-center text-gray-400 text-sm">Loading bin…</div>
+                ) : !binData || binData.length === 0 ? (
+                  <div className="py-8 text-center text-gray-400 text-sm">No deleted salary records.</div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr>
+                          <th className="table-th">Month</th>
+                          <th className="table-th">Employee</th>
+                          <th className="table-th">Net Salary</th>
+                          <th className="table-th">Deleted At</th>
+                          <th className="table-th">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {binData.map(row => (
+                          <tr key={row.id} className="table-tr">
+                            <td className="table-td font-medium">{row.month}</td>
+                            <td className="table-td">{row.employees?.full_name || <span className="text-gray-400">—</span>}</td>
+                            <td className="table-td">{formatRM(row.net_salary)}</td>
+                            <td className="table-td text-gray-500">
+                              {new Date(row.deleted_at).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' })}
+                            </td>
+                            <td className="table-td">
+                              <button onClick={() => handleRestoreSalary(row.id)} className="btn btn-sm bg-green-500 hover:bg-green-600 text-white">↩ Restore</button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
         {detailRows.length === 0 ? (
           <div className="card py-12 text-center text-gray-400">No records found.</div>
         ) : (
@@ -552,6 +640,65 @@ export default function SalaryPage() {
           </button>
         </div>
 
+      </div>
+
+      {/* ── Bin ── */}
+      <div className="mt-8">
+        <button
+          onClick={() => setBinOpen(b => !b)}
+          className="w-full flex items-center justify-between px-5 py-3 rounded-xl border-2 border-dashed border-gray-300 text-gray-500 hover:border-gray-400 hover:text-gray-600 transition-colors"
+        >
+          <span className="flex items-center gap-2 font-semibold text-sm">
+            🗑️ Bin
+            {binData && binData.length > 0 && (
+              <span className="bg-red-100 text-red-600 text-xs font-bold px-2 py-0.5 rounded-full">{binData.length}</span>
+            )}
+          </span>
+          <span className="text-xs">{binOpen ? '▲ Collapse' : '▼ Expand'}</span>
+        </button>
+        {binOpen && (
+          <div className="mt-3 card p-0 overflow-hidden">
+            <div className="px-5 py-3 border-b border-bg bg-gray-50">
+              <p className="text-xs text-gray-500">Deleted salary records are stored here. Restore to recover.</p>
+            </div>
+            <div className="p-4">
+              {binLoading ? (
+                <div className="py-8 text-center text-gray-400 text-sm">Loading bin…</div>
+              ) : !binData || binData.length === 0 ? (
+                <div className="py-8 text-center text-gray-400 text-sm">No deleted salary records.</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr>
+                        <th className="table-th">Month</th>
+                        <th className="table-th">Employee</th>
+                        <th className="table-th">Net Salary</th>
+                        <th className="table-th">Deleted At</th>
+                        <th className="table-th">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {binData.map(row => (
+                        <tr key={row.id} className="table-tr">
+                          <td className="table-td font-medium">{row.month}</td>
+                          <td className="table-td">{row.employees?.full_name || <span className="text-gray-400">—</span>}</td>
+                          <td className="table-td">{formatRM(row.net_salary)}</td>
+                          <td className="table-td text-gray-500">
+                            {new Date(row.deleted_at).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' })}
+                          </td>
+                          <td className="table-td">
+                            <button onClick={() => handleRestoreSalary(row.id)} className="btn btn-sm bg-green-500 hover:bg-green-600 text-white">↩ Restore</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -591,6 +591,12 @@ function AdminView() {
   const [advSaving, setAdvSaving]         = useState(false);
   const [advSlipUploading, setAdvSlipUploading] = useState(false);
   const advSlipRef = useRef<HTMLInputElement>(null);
+
+  // Bin
+  const [binOpen,    setBinOpen]    = useState(false);
+  const [binData,    setBinData]    = useState<{id: string; work_date: string; hours_worked: number; deleted_at: string; employees: {full_name: string} | null; projects: {name: string; code: string} | null}[] | null>(null);
+  const [binLoading, setBinLoading] = useState(false);
+
   const [advForm, setAdvForm] = useState({
     advance_date: today(), month: getCurrentMonth().substring(0, 7),
     amount: '', detail_type: 'makan', detail_note: '',
@@ -712,6 +718,29 @@ function AdminView() {
     await fetch(`/api/attendance/${id}`, { method: 'DELETE' });
     loadData();
   }
+
+  async function loadBin() {
+    setBinLoading(true);
+    const res = await fetch('/api/bin');
+    const data = await res.json();
+    setBinData(res.ok ? (data.attendance || []) : null);
+    setBinLoading(false);
+  }
+
+  async function handleRestoreAtt(id: string) {
+    const res = await fetch('/api/bin/restore', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'attendance', id }),
+    });
+    const d = await res.json();
+    if (res.ok) { showAlert('Record restored.'); loadBin(); loadData(); }
+    else showAlert(d.error || 'Restore failed.', 'danger');
+  }
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (binOpen && !binData) loadBin();
+  }, [binOpen]);
 
   // Auto-select workers from the most recent session of the chosen project
   useEffect(() => {
@@ -1090,6 +1119,71 @@ function AdminView() {
           </div>
         </div>
       )}
+
+      {/* ── Bin ── */}
+      <div className="mt-10">
+        <button
+          onClick={() => setBinOpen(b => !b)}
+          className="w-full flex items-center justify-between px-5 py-3 rounded-xl border-2 border-dashed border-gray-300 text-gray-500 hover:border-gray-400 hover:text-gray-600 transition-colors"
+        >
+          <span className="flex items-center gap-2 font-semibold text-sm">
+            🗑️ Bin
+            {binData && binData.length > 0 && (
+              <span className="bg-red-100 text-red-600 text-xs font-bold px-2 py-0.5 rounded-full">{binData.length}</span>
+            )}
+          </span>
+          <span className="text-xs">{binOpen ? '▲ Collapse' : '▼ Expand'}</span>
+        </button>
+        {binOpen && (
+          <div className="mt-3 card p-0 overflow-hidden">
+            <div className="px-5 py-3 border-b border-bg bg-gray-50">
+              <p className="text-xs text-gray-500">Deleted attendance records are stored here. Restore to recover.</p>
+            </div>
+            <div className="p-4">
+              {binLoading ? (
+                <div className="py-8 text-center text-gray-400 text-sm">Loading bin…</div>
+              ) : !binData || binData.length === 0 ? (
+                <div className="py-8 text-center text-gray-400 text-sm">No deleted attendance records.</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr>
+                        <th className="table-th">Date</th>
+                        <th className="table-th">Employee</th>
+                        <th className="table-th">Project</th>
+                        <th className="table-th">Hours</th>
+                        <th className="table-th">Deleted At</th>
+                        <th className="table-th">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {binData.map(row => (
+                        <tr key={row.id} className="table-tr">
+                          <td className="table-td">{row.work_date}</td>
+                          <td className="table-td font-medium">{row.employees?.full_name || <span className="text-gray-400">—</span>}</td>
+                          <td className="table-td">
+                            {row.projects
+                              ? <span className="badge bg-blue-50 text-blue-700">{row.projects.code || row.projects.name}</span>
+                              : <span className="text-gray-400">—</span>}
+                          </td>
+                          <td className="table-td">{row.hours_worked}h</td>
+                          <td className="table-td text-gray-500">
+                            {new Date(row.deleted_at).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' })}
+                          </td>
+                          <td className="table-td">
+                            <button onClick={() => handleRestoreAtt(row.id)} className="btn btn-sm bg-green-500 hover:bg-green-600 text-white">↩ Restore</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* ── Add Attendance Modal ─────────────────────────────────────── */}
       {showAddModal && (

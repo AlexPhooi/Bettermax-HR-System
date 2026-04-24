@@ -7,7 +7,7 @@ import { useRole } from '@/lib/role-context';
 const ADMIN_NAV = [
   { href: '/',           label: 'Dashboard' },
   { href: '/staff',      label: 'Staff' },
-  { href: '/attendance', label: 'Attendance' },
+  { href: '/attendance', label: 'Record' },
   { href: '/salary',     label: 'Salary' },
   { href: '/saving',     label: 'Saving' },
   { href: '/settings',   label: 'Settings' },
@@ -49,6 +49,9 @@ export default function Navbar() {
   const [expiring, setExpiring] = useState<ExpiryItem[]>([]);
   const [expired, setExpired]   = useState<ExpiryItem[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
+  const [binStaff,   setBinStaff]   = useState(0);
+  const [binAtt,     setBinAtt]     = useState(0);
+  const [binSalary,  setBinSalary]  = useState(0);
   const bellRef = useRef<HTMLDivElement>(null);
 
   const isAdmin    = role === 'admin' || role === 'owner';
@@ -67,6 +70,9 @@ export default function Navbar() {
         setExpiring(d.expiring_list || []);
         setExpired(d.expired_list || []);
         setPendingCount(d.pending_count || 0);
+        setBinStaff(d.bin_staff || 0);
+        setBinAtt(d.bin_att || 0);
+        setBinSalary(d.bin_salary || 0);
       })
       .catch(() => {});
   }, [loaded, isAdmin]);
@@ -113,6 +119,22 @@ export default function Navbar() {
                   {isAdmin && l.href === '/attendance' && pendingCount > 0 && (
                     <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full text-[10px] font-bold leading-4 text-center text-white bg-yellow-500">
                       {pendingCount}
+                    </span>
+                  )}
+                  {/* Bin badges */}
+                  {isAdmin && l.href === '/staff' && binStaff > 0 && (
+                    <span className="absolute -bottom-1 -right-1 min-w-[14px] h-3.5 px-1 rounded-full text-[9px] font-bold leading-3.5 text-center text-white bg-red-500">
+                      {binStaff}
+                    </span>
+                  )}
+                  {isAdmin && l.href === '/attendance' && binAtt > 0 && (
+                    <span className="absolute -bottom-1 -right-1 min-w-[14px] h-3.5 px-1 rounded-full text-[9px] font-bold leading-3.5 text-center text-white bg-red-500">
+                      {binAtt}
+                    </span>
+                  )}
+                  {isAdmin && l.href === '/salary' && binSalary > 0 && (
+                    <span className="absolute -bottom-1 -right-1 min-w-[14px] h-3.5 px-1 rounded-full text-[9px] font-bold leading-3.5 text-center text-white bg-red-500">
+                      {binSalary}
                     </span>
                   )}
                 </Link>
@@ -236,9 +258,18 @@ export default function Navbar() {
                 ${isActive(l.href) ? 'text-white bg-white/15 font-medium' : 'text-white/85 hover:bg-white/10'}`}>
               {l.label}
               {isAdmin && l.href === '/attendance' && pendingCount > 0 && (
-                <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-bold bg-yellow-500 text-white">
+                <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-bold bg-yellow-500 text-white">
                   {pendingCount}
                 </span>
+              )}
+              {isAdmin && l.href === '/staff' && binStaff > 0 && (
+                <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-bold bg-red-500 text-white">🗑️ {binStaff}</span>
+              )}
+              {isAdmin && l.href === '/attendance' && binAtt > 0 && (
+                <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-bold bg-red-500 text-white">🗑️ {binAtt}</span>
+              )}
+              {isAdmin && l.href === '/salary' && binSalary > 0 && (
+                <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-bold bg-red-500 text-white">🗑️ {binSalary}</span>
               )}
             </Link>
           ))}

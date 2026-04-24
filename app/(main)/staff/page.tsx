@@ -153,7 +153,6 @@ export default function StaffPage() {
 
   // Bin state
   const [binOpen, setBinOpen]         = useState(false);
-  const [binTab, setBinTab]           = useState<'staff' | 'attendance' | 'salary'>('staff');
   const [binData, setBinData]         = useState<BinData | null>(null);
   const [binLoading, setBinLoading]   = useState(false);
 
@@ -976,7 +975,7 @@ export default function StaffPage() {
         </form>
       </Modal>
 
-      {/* ── Bin (Soft-Deleted Items) ────────────────────────────────── */}
+      {/* ── Bin (Soft-Deleted Staff) ────────────────────────────────── */}
       <div className="mt-10">
         <button
           onClick={() => {
@@ -988,9 +987,9 @@ export default function StaffPage() {
         >
           <span className="flex items-center gap-2 font-semibold text-sm">
             🗑️ Bin
-            {binData && (binData.staff.length + binData.attendance.length + binData.salary.length) > 0 && (
+            {binData && binData.staff.length > 0 && (
               <span className="bg-red-100 text-red-600 text-xs font-bold px-2 py-0.5 rounded-full">
-                {binData.staff.length + binData.attendance.length + binData.salary.length}
+                {binData.staff.length}
               </span>
             )}
           </span>
@@ -1000,24 +999,7 @@ export default function StaffPage() {
         {binOpen && (
           <div className="mt-3 card p-0 overflow-hidden">
             <div className="px-5 py-3 border-b border-bg bg-gray-50">
-              <p className="text-xs text-gray-500">Deleted items are stored here. Restore to recover, or they remain hidden.</p>
-            </div>
-
-            {/* Tabs */}
-            <div className="flex border-b border-bg">
-              {(['staff', 'attendance', 'salary'] as const).map(tab => (
-                <button key={tab} onClick={() => setBinTab(tab)}
-                  className={`px-5 py-2.5 text-sm font-medium capitalize transition-colors border-b-2 -mb-px ${
-                    binTab === tab ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'
-                  }`}>
-                  {tab === 'staff' ? '👤 Staff' : tab === 'attendance' ? '📅 Attendance' : '💰 Salary'}
-                  {binData && (
-                    <span className="ml-1.5 text-xs text-gray-400">
-                      ({tab === 'staff' ? binData.staff.length : tab === 'attendance' ? binData.attendance.length : binData.salary.length})
-                    </span>
-                  )}
-                </button>
-              ))}
+              <p className="text-xs text-gray-500">Deleted staff accounts are stored here. Restore to recover.</p>
             </div>
 
             <div className="p-4">
@@ -1025,142 +1007,45 @@ export default function StaffPage() {
                 <div className="py-8 text-center text-gray-400 text-sm">Loading bin…</div>
               ) : !binData ? (
                 <div className="py-8 text-center text-gray-400 text-sm">Failed to load bin.</div>
+              ) : binData.staff.length === 0 ? (
+                <div className="py-8 text-center text-gray-400 text-sm">No deleted staff.</div>
               ) : (
-                <>
-                  {/* Staff tab */}
-                  {binTab === 'staff' && (
-                    binData.staff.length === 0 ? (
-                      <div className="py-8 text-center text-gray-400 text-sm">No deleted staff.</div>
-                    ) : (
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr>
-                              <th className="table-th">Name</th>
-                              <th className="table-th">Username</th>
-                              <th className="table-th">Role</th>
-                              <th className="table-th">Deleted At</th>
-                              <th className="table-th">Action</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {binData.staff.map(row => (
-                              <tr key={row.id} className="table-tr">
-                                <td className="table-td font-medium">
-                                  {row.employees?.full_name || <span className="text-gray-400 italic">No name</span>}
-                                </td>
-                                <td className="table-td font-mono text-gray-600">{row.username}</td>
-                                <td className="table-td">
-                                  <RoleBadge role={row.role} />
-                                </td>
-                                <td className="table-td text-gray-500">
-                                  {new Date(row.deleted_at).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' })}
-                                </td>
-                                <td className="table-td">
-                                  <button
-                                    onClick={() => handleRestore('staff', row.id)}
-                                    className="btn btn-sm bg-green-500 hover:bg-green-600 text-white">
-                                    ↩ Restore
-                                  </button>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )
-                  )}
-
-                  {/* Attendance tab */}
-                  {binTab === 'attendance' && (
-                    binData.attendance.length === 0 ? (
-                      <div className="py-8 text-center text-gray-400 text-sm">No deleted attendance records.</div>
-                    ) : (
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr>
-                              <th className="table-th">Date</th>
-                              <th className="table-th">Employee</th>
-                              <th className="table-th">Project</th>
-                              <th className="table-th">Hours</th>
-                              <th className="table-th">Deleted At</th>
-                              <th className="table-th">Action</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {binData.attendance.map(row => (
-                              <tr key={row.id} className="table-tr">
-                                <td className="table-td">{row.work_date}</td>
-                                <td className="table-td font-medium">
-                                  {row.employees?.full_name || <span className="text-gray-400">—</span>}
-                                </td>
-                                <td className="table-td">
-                                  {row.projects
-                                    ? <span className="badge bg-blue-50 text-blue-700">{row.projects.code || row.projects.name}</span>
-                                    : <span className="text-gray-400">—</span>}
-                                </td>
-                                <td className="table-td">{row.hours_worked}h</td>
-                                <td className="table-td text-gray-500">
-                                  {new Date(row.deleted_at).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' })}
-                                </td>
-                                <td className="table-td">
-                                  <button
-                                    onClick={() => handleRestore('attendance', row.id)}
-                                    className="btn btn-sm bg-green-500 hover:bg-green-600 text-white">
-                                    ↩ Restore
-                                  </button>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )
-                  )}
-
-                  {/* Salary tab */}
-                  {binTab === 'salary' && (
-                    binData.salary.length === 0 ? (
-                      <div className="py-8 text-center text-gray-400 text-sm">No deleted salary records.</div>
-                    ) : (
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr>
-                              <th className="table-th">Month</th>
-                              <th className="table-th">Employee</th>
-                              <th className="table-th">Net Salary</th>
-                              <th className="table-th">Deleted At</th>
-                              <th className="table-th">Action</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {binData.salary.map(row => (
-                              <tr key={row.id} className="table-tr">
-                                <td className="table-td font-medium">{row.month}</td>
-                                <td className="table-td">
-                                  {row.employees?.full_name || <span className="text-gray-400">—</span>}
-                                </td>
-                                <td className="table-td">{formatRM(row.net_salary)}</td>
-                                <td className="table-td text-gray-500">
-                                  {new Date(row.deleted_at).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' })}
-                                </td>
-                                <td className="table-td">
-                                  <button
-                                    onClick={() => handleRestore('salary', row.id)}
-                                    className="btn btn-sm bg-green-500 hover:bg-green-600 text-white">
-                                    ↩ Restore
-                                  </button>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )
-                  )}
-                </>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr>
+                        <th className="table-th">Name</th>
+                        <th className="table-th">Username</th>
+                        <th className="table-th">Role</th>
+                        <th className="table-th">Deleted At</th>
+                        <th className="table-th">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {binData.staff.map(row => (
+                        <tr key={row.id} className="table-tr">
+                          <td className="table-td font-medium">
+                            {row.employees?.full_name || <span className="text-gray-400 italic">No name</span>}
+                          </td>
+                          <td className="table-td font-mono text-gray-600">{row.username}</td>
+                          <td className="table-td">
+                            <RoleBadge role={row.role} />
+                          </td>
+                          <td className="table-td text-gray-500">
+                            {new Date(row.deleted_at).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' })}
+                          </td>
+                          <td className="table-td">
+                            <button
+                              onClick={() => handleRestore('staff', row.id)}
+                              className="btn btn-sm bg-green-500 hover:bg-green-600 text-white">
+                              ↩ Restore
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </div>
           </div>
