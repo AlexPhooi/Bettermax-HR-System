@@ -74,6 +74,9 @@ export default function MyProfilePage() {
   // Edit form state
   const [editing, setEditing] = useState(false);
   const [editPhone,       setEditPhone]       = useState('');
+  const [editPassportNo,  setEditPassportNo]  = useState('');
+  const [editPermitNo,    setEditPermitNo]    = useState('');
+  const [editPermitExp,   setEditPermitExp]   = useState('');
   const [editBank,        setEditBank]        = useState('');
   const [editBankAcc,     setEditBankAcc]     = useState('');
   const [editPassportUrl, setEditPassportUrl] = useState('');
@@ -121,6 +124,9 @@ export default function MyProfilePage() {
   function startEdit() {
     if (!emp) return;
     setEditPhone(emp.phone || '');
+    setEditPassportNo(emp.passport_no || '');
+    setEditPermitNo(emp.permit_no || '');
+    setEditPermitExp(emp.permit_expire || '');
     setEditBank(emp.bank_name || '');
     setEditBankAcc(emp.bank_account || '');
     setEditPassportUrl(emp.passport_doc_url || '');
@@ -137,6 +143,9 @@ export default function MyProfilePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           phone:            editPhone,
+          passport_no:      editPassportNo || null,
+          permit_no:        editPermitNo   || null,
+          permit_expire:    editPermitExp  || null,
           bank_name:        editBank,
           bank_account:     editBankAcc,
           passport_doc_url: editPassportUrl || null,
@@ -280,6 +289,29 @@ export default function MyProfilePage() {
           <div>
             <label className="form-label">Phone</label>
             <input className="form-control" value={editPhone} onChange={e => setEditPhone(e.target.value)} placeholder="+60 1X-XXXXXXX" />
+          </div>
+
+          {/* Work Permit */}
+          <div className="space-y-3 border-t border-gray-100 pt-4">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Work Permit</p>
+            <div>
+              <label className="form-label">Passport No.</label>
+              <input className="form-control" value={editPassportNo} onChange={e => setEditPassportNo(e.target.value)} placeholder="e.g. A12345678" />
+            </div>
+            <div>
+              <label className="form-label">Permit No.</label>
+              <input className="form-control" value={editPermitNo} onChange={e => setEditPermitNo(e.target.value)} placeholder="e.g. PL-XXXXXXXXX" />
+            </div>
+            <div>
+              <label className="form-label">Permit Expiry Date</label>
+              <input type="date" className="form-control" value={editPermitExp} onChange={e => setEditPermitExp(e.target.value)} />
+              {editPermitExp && (() => {
+                const days = Math.floor((new Date(editPermitExp).getTime() - Date.now()) / 86400000);
+                if (days < 0)   return <p className="text-xs text-red-500 mt-1">⚠️ Expired {Math.abs(days)} days ago — notify your manager!</p>;
+                if (days <= 60) return <p className="text-xs text-orange-500 mt-1">⚠️ Expires in {days} days</p>;
+                return <p className="text-xs text-green-600 mt-1">✅ Valid for {days} days</p>;
+              })()}
+            </div>
           </div>
 
           {/* Bank */}

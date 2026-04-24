@@ -45,6 +45,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (body.bank_name        !== undefined) allowed.bank_name        = body.bank_name                || null;
   if (body.bank_account     !== undefined) allowed.bank_account     = body.bank_account?.trim()     || null;
   if (body.avatar_url       !== undefined) allowed.avatar_url       = body.avatar_url?.trim()       || null;
+  // Workers can update their own permit/passport details
+  if (body.passport_no      !== undefined) allowed.passport_no      = body.passport_no?.trim()      || null;
+  if (body.permit_no        !== undefined) allowed.permit_no        = body.permit_no?.trim()        || null;
+  if (body.permit_expire    !== undefined) allowed.permit_expire    = body.permit_expire            || null;
   // Workers can upload their own documents
   if (body.passport_doc_url !== undefined) allowed.passport_doc_url = body.passport_doc_url?.trim() || null;
   if (body.permit_doc_url   !== undefined) allowed.permit_doc_url   = body.permit_doc_url?.trim()   || null;
