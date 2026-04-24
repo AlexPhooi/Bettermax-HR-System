@@ -76,7 +76,7 @@ export default function SavingPage() {
   const allMonths = useMemo(() => {
     const months = new Set<string>();
     for (const r of records) { if (Number(r.total_site_bonus) > 0) months.add(r.month); }
-    return [...months].sort((a, b) => b.localeCompare(a));
+    return Array.from(months).sort((a, b) => b.localeCompare(a));
   }, [records]);
 
   // Grand total
