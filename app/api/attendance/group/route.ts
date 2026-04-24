@@ -1,6 +1,7 @@
 // PATCH /api/attendance/group
 // Admin bulk-approves / bulk-rejects a group of records (same project+date session)
 // On approval: auto-credits savings ledger for any site_bonus > 0
+// Birthday month: x2 site bonus (RM20 instead of RM10)
 import { NextRequest, NextResponse } from 'next/server';
 import { getUser, isManager } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
@@ -33,9 +34,9 @@ export async function PATCH(req: NextRequest) {
     update.ot_hours     = Number(ot_hours) || 0;
   }
 
-  // Fetch attendance records with project + employee info
+  // Fetch attendance records with project + employee info (including date_of_birth for birthday bonus)
   const { data: records } = await supabase.from('hr_attendance')
-    .select('id, hours_worked, employee_id, project_id, work_date, projects(name, code)')
+    .select('id, hours_worked, employee_id, project_id, work_date, projects(name, code), employees(date_of_birth)')
     .in('id', ids);
 
   if (!records) {
@@ -45,14 +46,25 @@ export async function PATCH(req: NextRequest) {
   }
 
   // Update each record with correct site_bonus
-  let savingsCredited = 0;
+  let savingsCredited  = 0;
+  let birthdayBonuses  = 0;
   const month = new Date().toISOString().slice(0, 7);
 
   for (const rec of records) {
     const effectiveHours = update.hours_worked ?? Number(rec.hours_worked);
-    const bonus = (site_clean !== undefined)
-      ? (Boolean(site_clean) && effectiveHours >= 8 ? 10 : 0)
-      : 0;
+
+    // Check if work_date is in employee's birthday month → x2 bonus
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const emp: any = rec.employees;
+    const dob: string | null = emp?.date_of_birth ?? null;
+    const workMonth = rec.work_date ? rec.work_date.slice(5, 7) : null;
+    const dobMonth  = dob ? dob.slice(5, 7) : null;
+    const isBirthdayMonth = dobMonth && workMonth && dobMonth === workMonth;
+
+    let bonus = 0;
+    if (site_clean !== undefined && Boolean(site_clean) && effectiveHours >= 8) {
+      bonus = isBirthdayMonth ? 20 : 10; // x2 on birthday month
+    }
 
     const recUpdate = site_clean !== undefined
       ? { ...update, site_bonus: bonus }
@@ -82,8 +94,11 @@ export async function PATCH(req: NextRequest) {
       if ((existing || 0) === 0) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const proj: any = rec.projects;
-        const projectName = proj?.name || proj?.code || 'Site';
-        const dateStr = rec.work_date;
+        const projectName  = proj?.name || proj?.code || 'Site';
+        const dateStr      = rec.work_date;
+        const bonusLabel   = isBirthdayMonth
+          ? `🎂 Birthday bonus — ${projectName} (${dateStr})`
+          : `Site bonus — ${projectName} (${dateStr})`;
 
         await supabase.from('savings').insert({
           employee_id:   rec.employee_id,
@@ -91,7 +106,7 @@ export async function PATCH(req: NextRequest) {
           type_detail:   'mission_bonus',
           amount:        bonus,
           balance_after: balanceAfter,
-          reason:        `Site bonus — ${projectName} (${dateStr})`,
+          reason:        bonusLabel,
           reference_id:  rec.id,
           month,
           created_by:    user.id,
@@ -103,6 +118,7 @@ export async function PATCH(req: NextRequest) {
           .eq('id', rec.employee_id);
 
         savingsCredited++;
+        if (isBirthdayMonth) birthdayBonuses++;
       }
     }
   }
@@ -110,5 +126,6 @@ export async function PATCH(req: NextRequest) {
   return NextResponse.json({
     updated:          records.length,
     savings_credited: savingsCredited,
+    birthday_bonuses: birthdayBonuses,
   });
 }

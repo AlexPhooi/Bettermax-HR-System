@@ -39,6 +39,7 @@ export async function POST(req: NextRequest) {
     passport_no:     body.passport_no?.trim()  || null,
     permit_no:       body.permit_no?.trim()    || null,
     permit_expire:   body.permit_expire        || null,
+    date_of_birth:   body.date_of_birth        || null,
     phone:           body.phone?.trim()        || null,
     daily_rate:      Number(body.daily_rate),
     rank:            body.rank                 || null,

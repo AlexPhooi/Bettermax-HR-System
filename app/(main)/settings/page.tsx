@@ -16,6 +16,8 @@ interface RankRate { rank: string; daily_rate: number; }
 const RANKS = ['Rookie', 'Support', 'Skilled', 'Pro', 'Core', 'Leader'];
 const EMPTY_PROJ = { name: '', code: '', location: '', maps_url: '', waze_url: '' };
 
+type TabKey = 'staff' | 'record' | 'salary' | 'saving';
+
 // ── Main Page ──────────────────────────────────────────────────────────
 export default function SettingsPage() {
   const { role, loaded } = useRole();
@@ -24,34 +26,152 @@ export default function SettingsPage() {
 
   useEffect(() => { if (loaded && !canAccess) router.replace('/'); }, [loaded, canAccess, router]);
 
-  const [tab, setTab] = useState<'projects' | 'rates'>('projects');
+  const [tab, setTab] = useState<TabKey>('staff');
 
   if (!loaded || !canAccess) return null;
+
+  const TABS: { key: TabKey; label: string }[] = [
+    { key: 'staff',  label: '👷 Staff'   },
+    { key: 'record', label: '🏗️ Record'  },
+    { key: 'salary', label: '💰 Salary'  },
+    { key: 'saving', label: '🏦 Saving'  },
+  ];
 
   return (
     <div className="p-4 md:p-6 max-w-5xl mx-auto">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-primary">Settings</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Manage projects and ranking rates</p>
+        <p className="text-sm text-gray-500 mt-0.5">Manage all system variables</p>
       </div>
 
       {/* Tab bar */}
-      <div className="flex gap-1 mb-6 bg-gray-100 p-1 rounded-lg w-fit">
-        {([['projects', '🏗️ Projects'], ['rates', '💰 Ranking Rates']] as const).map(([key, label]) => (
-          <button key={key} onClick={() => setTab(key)}
+      <div className="flex gap-1 mb-6 bg-gray-100 p-1 rounded-lg w-fit flex-wrap">
+        {TABS.map(t => (
+          <button key={t.key} onClick={() => setTab(t.key)}
             className={`px-4 py-2 rounded-md text-sm font-medium transition-colors
-              ${tab === key ? 'bg-white shadow text-primary' : 'text-gray-500 hover:text-gray-700'}`}>
-            {label}
+              ${tab === t.key ? 'bg-white shadow text-primary' : 'text-gray-500 hover:text-gray-700'}`}>
+            {t.label}
           </button>
         ))}
       </div>
 
-      {tab === 'projects' ? <ProjectsTab /> : <RatesTab />}
+      {tab === 'staff'  && <RatesTab />}
+      {tab === 'record' && <ProjectsTab />}
+      {tab === 'salary' && <SalaryTab />}
+      {tab === 'saving' && <SavingTab />}
     </div>
   );
 }
 
-// ── Projects Tab ───────────────────────────────────────────────────────
+// ── Staff Tab — Ranking Rates ──────────────────────────────────────────
+function RatesTab() {
+  const [rates, setRates]         = useState<RankRate[]>([]);
+  const [loading, setLoading]     = useState(true);
+  const [editing, setEditing]     = useState(false);
+  const [draft, setDraft]         = useState<RankRate[]>([]);
+  const [saving, setSaving]       = useState(false);
+  const [alertMsg, setAlertMsg]   = useState('');
+  const [alertType, setAlertType] = useState<'success' | 'danger'>('success');
+
+  function showAlert(msg: string, type: 'success' | 'danger' = 'success') {
+    setAlertMsg(msg); setAlertType(type); setTimeout(() => setAlertMsg(''), 4000);
+  }
+
+  async function loadRates() {
+    setLoading(true);
+    const data = await fetch('/api/settings/ranking-rates').then(r => r.json());
+    const map: Record<string, number> = {};
+    if (Array.isArray(data)) data.forEach((r: RankRate) => { map[r.rank] = r.daily_rate; });
+    const ordered = RANKS.map(r => ({ rank: r, daily_rate: map[r] ?? 0 }));
+    setRates(ordered);
+    setDraft(ordered);
+    setLoading(false);
+  }
+
+  useEffect(() => { loadRates(); }, []);
+
+  function startEdit() { setDraft(rates.map(r => ({ ...r }))); setEditing(true); }
+  function cancelEdit() { setDraft(rates.map(r => ({ ...r }))); setEditing(false); }
+
+  function updateDraft(rank: string, val: string) {
+    setDraft(d => d.map(r => r.rank === rank ? { ...r, daily_rate: Number(val) || 0 } : r));
+  }
+
+  async function saveRates() {
+    setSaving(true);
+    try {
+      const res = await fetch('/api/settings/ranking-rates', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(draft),
+      });
+      if (!res.ok) { showAlert('Failed to save.', 'danger'); return; }
+      showAlert('Ranking rates updated!');
+      setEditing(false);
+      loadRates();
+    } finally { setSaving(false); }
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-sm text-gray-500">Daily rate per rank. Changes apply to future salary calculations only.</p>
+        {!editing && <button className="btn btn-primary" onClick={startEdit}>✏️ Edit Rates</button>}
+      </div>
+
+      {alertMsg && <div className={`alert alert-${alertType} mb-4`}>{alertMsg}</div>}
+
+      {loading ? <div className="p-8 text-center text-gray-400">Loading…</div> : (
+        <div className="card p-0 overflow-hidden">
+          <table className="w-full">
+            <thead>
+              <tr>
+                <th className="table-th">Rank</th>
+                <th className="table-th text-right">Daily Rate (RM)</th>
+                {editing && <th className="table-th text-right">New Rate (RM)</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {(editing ? draft : rates).map(r => (
+                <tr key={r.rank} className="table-tr">
+                  <td className="table-td">
+                    <span className={`badge ${RANK_COLORS[r.rank] || 'bg-gray-100 text-gray-600'}`}>{r.rank}</span>
+                  </td>
+                  <td className="table-td text-right font-semibold text-accent">
+                    RM {Number(r.daily_rate).toFixed(2)}
+                  </td>
+                  {editing && (
+                    <td className="table-td text-right">
+                      <input
+                        type="number" min="0" step="5"
+                        className="form-control w-28 text-right ml-auto"
+                        value={draft.find(d => d.rank === r.rank)?.daily_rate ?? r.daily_rate}
+                        onChange={e => updateDraft(r.rank, e.target.value)}
+                      />
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          {editing && (
+            <div className="px-6 py-4 border-t border-bg flex gap-3">
+              <button className="btn btn-primary" onClick={saveRates} disabled={saving}>
+                {saving ? 'Saving…' : '✓ Save Rates'}
+              </button>
+              <button className="btn btn-secondary" onClick={cancelEdit}>Cancel</button>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="mt-4 rounded-lg bg-blue-50 border border-blue-200 px-4 py-3 text-sm text-blue-700">
+        💡 Rate changes only affect <strong>future salary calculations</strong>. Finalized records are not changed.
+      </div>
+    </div>
+  );
+}
+
+// ── Record Tab — Projects ──────────────────────────────────────────────
 function ProjectsTab() {
   const [projects, setProjects]   = useState<Project[]>([]);
   const [loading, setLoading]     = useState(true);
@@ -68,13 +188,6 @@ function ProjectsTab() {
     setAlertMsg(msg); setAlertType(type); setTimeout(() => setAlertMsg(''), 4000);
   }
 
-  async function load() {
-    setLoading(true);
-    const res = await fetch('/api/projects');
-    setProjects(Array.isArray(await res.json()) ? await res.json() : []);
-    setLoading(false);
-  }
-  // avoid double-fetch from the await above
   async function loadProjects() {
     setLoading(true);
     const data = await fetch('/api/projects').then(r => r.json());
@@ -116,7 +229,7 @@ function ProjectsTab() {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...p, status: newStatus }),
     });
-    if (res.ok) { showAlert(`Project marked as ${newStatus}.`); loadProjects(); }
+    if (res.ok) { showAlert(`Marked as ${newStatus}.`); loadProjects(); }
   }
 
   return (
@@ -224,112 +337,222 @@ function ProjectsTab() {
   );
 }
 
-// ── Ranking Rates Tab ──────────────────────────────────────────────────
-function RatesTab() {
-  const [rates, setRates]         = useState<RankRate[]>([]);
-  const [loading, setLoading]     = useState(true);
-  const [editing, setEditing]     = useState(false);
-  const [draft, setDraft]         = useState<RankRate[]>([]);
-  const [saving, setSaving]       = useState(false);
-  const [alertMsg, setAlertMsg]   = useState('');
+// ── Salary Tab — Payment Day ───────────────────────────────────────────
+function SalaryTab() {
+  const [payDay,   setPayDay]   = useState('7');
+  const [draft,    setDraft]    = useState('7');
+  const [editing,  setEditing]  = useState(false);
+  const [loading,  setLoading]  = useState(true);
+  const [saving,   setSaving]   = useState(false);
+  const [alertMsg, setAlertMsg] = useState('');
   const [alertType, setAlertType] = useState<'success' | 'danger'>('success');
 
   function showAlert(msg: string, type: 'success' | 'danger' = 'success') {
     setAlertMsg(msg); setAlertType(type); setTimeout(() => setAlertMsg(''), 4000);
   }
 
-  async function loadRates() {
+  async function load() {
     setLoading(true);
-    const data = await fetch('/api/settings/ranking-rates').then(r => r.json());
-    // Ensure all ranks are present in display order
-    const map: Record<string, number> = {};
-    if (Array.isArray(data)) data.forEach((r: RankRate) => { map[r.rank] = r.daily_rate; });
-    const ordered = RANKS.map(r => ({ rank: r, daily_rate: map[r] ?? 0 }));
-    setRates(ordered);
-    setDraft(ordered);
+    const data = await fetch('/api/settings/app').then(r => r.json());
+    const val = data.salary_payment_day ?? '7';
+    setPayDay(val); setDraft(val);
     setLoading(false);
   }
+  useEffect(() => { load(); }, []);
 
-  useEffect(() => { loadRates(); }, []);
-
-  function startEdit() { setDraft(rates.map(r => ({ ...r }))); setEditing(true); }
-  function cancelEdit() { setDraft(rates.map(r => ({ ...r }))); setEditing(false); }
-
-  function updateDraft(rank: string, val: string) {
-    setDraft(d => d.map(r => r.rank === rank ? { ...r, daily_rate: Number(val) || 0 } : r));
-  }
-
-  async function saveRates() {
+  async function save() {
+    const day = Number(draft);
+    if (isNaN(day) || day < 1 || day > 28) { showAlert('Day must be between 1 and 28.', 'danger'); return; }
     setSaving(true);
     try {
-      const res = await fetch('/api/settings/ranking-rates', {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(draft),
+      const res = await fetch('/api/settings/app', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ salary_payment_day: String(day) }),
       });
-      if (!res.ok) { showAlert('Failed to save.', 'danger'); return; }
-      showAlert('Ranking rates updated successfully!');
+      if (!res.ok) { const d = await res.json(); showAlert(d.error, 'danger'); return; }
+      showAlert('Salary payment day updated!');
+      setPayDay(String(day));
       setEditing(false);
-      loadRates();
     } finally { setSaving(false); }
   }
 
+  if (loading) return <div className="p-8 text-center text-gray-400">Loading…</div>;
+
+  // Compute next payment date
+  const now = new Date();
+  const day = Number(payDay);
+  let nextPayment = new Date(now.getFullYear(), now.getMonth() + 1, day);
+  const nextPayStr = nextPayment.toLocaleDateString('en-MY', { day: 'numeric', month: 'long', year: 'numeric' });
+
   return (
-    <div>
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <p className="text-sm text-gray-500">Set the daily rate for each rank. Changes apply to all new salary calculations.</p>
-        </div>
-        {!editing && <button className="btn btn-primary" onClick={startEdit}>✏️ Edit Rates</button>}
-      </div>
+    <div className="max-w-md space-y-5">
+      {alertMsg && <div className={`alert alert-${alertType}`}>{alertMsg}</div>}
 
-      {alertMsg && <div className={`alert alert-${alertType} mb-4`}>{alertMsg}</div>}
-
-      {loading ? <div className="p-8 text-center text-gray-400">Loading…</div> : (
-        <div className="card p-0 overflow-hidden">
-          <table className="w-full">
-            <thead>
-              <tr>
-                <th className="table-th">Rank</th>
-                <th className="table-th text-right">Daily Rate (RM)</th>
-                {editing && <th className="table-th text-right">New Rate (RM)</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {(editing ? draft : rates).map(r => (
-                <tr key={r.rank} className="table-tr">
-                  <td className="table-td">
-                    <span className={`badge ${RANK_COLORS[r.rank] || 'bg-gray-100 text-gray-600'}`}>{r.rank}</span>
-                  </td>
-                  <td className="table-td text-right font-semibold text-accent">
-                    RM {Number(r.daily_rate).toFixed(2)}
-                  </td>
-                  {editing && (
-                    <td className="table-td text-right">
-                      <input
-                        type="number" min="0" step="5"
-                        className="form-control w-28 text-right ml-auto"
-                        value={draft.find(d => d.rank === r.rank)?.daily_rate ?? r.daily_rate}
-                        onChange={e => updateDraft(r.rank, e.target.value)}
-                      />
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          {editing && (
-            <div className="px-6 py-4 border-t border-bg flex gap-3">
-              <button className="btn btn-primary" onClick={saveRates} disabled={saving}>
-                {saving ? 'Saving…' : '✓ Save Rates'}
-              </button>
-              <button className="btn btn-secondary" onClick={cancelEdit}>Cancel</button>
-            </div>
+      <div className="card space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="font-semibold text-gray-800">Salary Payment Day</h3>
+            <p className="text-sm text-gray-500 mt-0.5">Which day of the following month salaries are paid</p>
+          </div>
+          {!editing && (
+            <button className="btn btn-primary" onClick={() => { setDraft(payDay); setEditing(true); }}>
+              ✏️ Edit
+            </button>
           )}
         </div>
-      )}
 
-      <div className="mt-4 rounded-lg bg-blue-50 border border-blue-200 px-4 py-3 text-sm text-blue-700">
-        💡 Rate changes only affect <strong>future salary calculations</strong>. Already finalized salary records are not changed.
+        {editing ? (
+          <div className="space-y-3">
+            <div>
+              <label className="form-label">Day of month (1–28)</label>
+              <input type="number" min={1} max={28} className="form-control w-28"
+                value={draft} onChange={e => setDraft(e.target.value)} />
+              <p className="text-xs text-gray-400 mt-1">e.g. 7 means salary is paid on the 7th of next month</p>
+            </div>
+            <div className="flex gap-3">
+              <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+              <button className="btn btn-secondary" onClick={() => setEditing(false)}>Cancel</button>
+            </div>
+          </div>
+        ) : (
+          <div className="bg-accent/5 border border-accent/20 rounded-xl p-4">
+            <p className="text-xs text-gray-500 mb-1">Current setting</p>
+            <p className="text-3xl font-extrabold text-accent">{payDay}<sup className="text-base font-medium text-gray-500">th</sup></p>
+            <p className="text-sm text-gray-600 mt-2">
+              Next salary payment: <strong className="text-gray-800">{nextPayStr}</strong>
+            </p>
+          </div>
+        )}
+      </div>
+
+      <div className="rounded-lg bg-blue-50 border border-blue-200 px-4 py-3 text-sm text-blue-700">
+        💡 This date is shown on the Salary page as a reminder for when to process payments. It does not auto-trigger any action.
+      </div>
+    </div>
+  );
+}
+
+// ── Saving Tab — Interest Rate + Birthday Rate ─────────────────────────
+function SavingTab() {
+  const [settings, setSettings] = useState({ interest_rate: 0.02, birthday_rate: 0.04, total_pool: 0, last_interest_month: null as string | null });
+  const [draft, setDraft]   = useState({ interest_rate: '2', birthday_rate: '4' });
+  const [editing, setEditing]   = useState(false);
+  const [loading, setLoading]   = useState(true);
+  const [saving, setSaving]     = useState(false);
+  const [alertMsg, setAlertMsg] = useState('');
+  const [alertType, setAlertType] = useState<'success' | 'danger'>('success');
+
+  function showAlert(msg: string, type: 'success' | 'danger' = 'success') {
+    setAlertMsg(msg); setAlertType(type); setTimeout(() => setAlertMsg(''), 4000);
+  }
+
+  async function load() {
+    setLoading(true);
+    const data = await fetch('/api/savings/settings').then(r => r.json());
+    setSettings(data);
+    setDraft({
+      interest_rate: String(Math.round(data.interest_rate * 100)),
+      birthday_rate: String(Math.round(data.birthday_rate * 100)),
+    });
+    setLoading(false);
+  }
+  useEffect(() => { load(); }, []);
+
+  async function save() {
+    const ir = Number(draft.interest_rate) / 100;
+    const br = Number(draft.birthday_rate) / 100;
+    if (isNaN(ir) || ir < 0 || ir > 0.5) { showAlert('Interest rate must be 0–50%.', 'danger'); return; }
+    if (isNaN(br) || br < 0 || br > 0.5) { showAlert('Birthday rate must be 0–50%.', 'danger'); return; }
+    if (br < ir) { showAlert('Birthday rate should be ≥ standard rate.', 'danger'); return; }
+    setSaving(true);
+    try {
+      const res = await fetch('/api/savings/settings', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ interest_rate: ir, birthday_rate: br }),
+      });
+      if (!res.ok) { const d = await res.json(); showAlert(d.error, 'danger'); return; }
+      showAlert('Saving rates updated! Effective from next month.');
+      setEditing(false);
+      load();
+    } finally { setSaving(false); }
+  }
+
+  if (loading) return <div className="p-8 text-center text-gray-400">Loading…</div>;
+
+  const stdPct  = (settings.interest_rate * 100).toFixed(1);
+  const bDayPct = (settings.birthday_rate * 100).toFixed(1);
+
+  return (
+    <div className="max-w-md space-y-5">
+      {alertMsg && <div className={`alert alert-${alertType}`}>{alertMsg}</div>}
+
+      <div className="card space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="font-semibold text-gray-800">Interest Rates</h3>
+            <p className="text-sm text-gray-500 mt-0.5">Applied on the 1st of each month</p>
+          </div>
+          {!editing && (
+            <button className="btn btn-primary" onClick={() => setEditing(true)}>✏️ Edit</button>
+          )}
+        </div>
+
+        {editing ? (
+          <div className="space-y-4">
+            <div>
+              <label className="form-label">Standard Monthly Rate (%)</label>
+              <div className="flex items-center gap-2">
+                <input type="number" min={0} max={50} step={0.5} className="form-control w-28"
+                  value={draft.interest_rate} onChange={e => setDraft(d => ({ ...d, interest_rate: e.target.value }))} />
+                <span className="text-gray-500">% / month</span>
+              </div>
+              <p className="text-xs text-gray-400 mt-1">e.g. 2 = 2% monthly = 24% annually</p>
+            </div>
+            <div>
+              <label className="form-label">🎂 Birthday Month Rate (%)</label>
+              <div className="flex items-center gap-2">
+                <input type="number" min={0} max={50} step={0.5} className="form-control w-28"
+                  value={draft.birthday_rate} onChange={e => setDraft(d => ({ ...d, birthday_rate: e.target.value }))} />
+                <span className="text-gray-500">% / month</span>
+              </div>
+              <p className="text-xs text-gray-400 mt-1">Applied automatically in each worker's birthday month</p>
+            </div>
+            <div className="flex gap-3">
+              <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+              <button className="btn btn-secondary" onClick={() => setEditing(false)}>Cancel</button>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-primary/5 border border-primary/15 rounded-xl p-4 text-center">
+              <p className="text-xs text-gray-500 mb-1">Standard Rate</p>
+              <p className="text-3xl font-extrabold text-primary">{stdPct}<span className="text-base font-medium">%</span></p>
+              <p className="text-xs text-gray-400 mt-1">per month</p>
+            </div>
+            <div className="bg-pink-50 border border-pink-200 rounded-xl p-4 text-center">
+              <p className="text-xs text-gray-500 mb-1">🎂 Birthday Rate</p>
+              <p className="text-3xl font-extrabold text-pink-600">{bDayPct}<span className="text-base font-medium">%</span></p>
+              <p className="text-xs text-gray-400 mt-1">birthday month</p>
+            </div>
+          </div>
+        )}
+
+        <div className="border-t border-gray-100 pt-3 grid grid-cols-2 gap-3 text-sm">
+          <div>
+            <p className="text-xs text-gray-400">Total Pool</p>
+            <p className="font-bold text-gray-800">RM {settings.total_pool.toFixed(2)}</p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-400">Last Applied</p>
+            <p className="font-bold text-gray-800">{settings.last_interest_month ?? '—'}</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-700 space-y-1">
+        <p>💡 <strong>Birthday month bonus</strong>: Workers automatically earn {bDayPct}% (instead of {stdPct}%) in their birth month.</p>
+        <p>💡 <strong>Site bonus x2</strong>: If attendance is approved on a worker&apos;s birthday month, they earn RM20 bonus (instead of RM10).</p>
+        <p>💡 Rate changes take effect from the <strong>1st of next month</strong>.</p>
       </div>
     </div>
   );

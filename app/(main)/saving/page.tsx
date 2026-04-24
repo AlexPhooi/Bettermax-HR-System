@@ -20,6 +20,7 @@ interface SavingsSummary {
 
 interface SavingsSettings {
   interest_rate: number;
+  birthday_rate: number;
   effective_from: string | null;
   last_interest_date: string | null;
   last_interest_month: string | null;
@@ -221,7 +222,11 @@ export default function SavingPage() {
     } finally { setReleasing(false); }
   }
 
-  const rate = settings ? (settings.interest_rate * 100).toFixed(1) : '2.0';
+  const rate        = settings ? (settings.interest_rate * 100).toFixed(1) : '2.0';
+  const birthdayRate = settings ? (settings.birthday_rate * 100).toFixed(1) : '4.0';
+  // Daily accrual per employee = balance × (monthly_rate / 30)
+  const monthlyRate = settings?.interest_rate ?? 0.02;
+  const dailyRate   = monthlyRate / 30;
 
   // ── JSX ───────────────────────────────────────────────────────────────────
 
@@ -320,6 +325,7 @@ export default function SavingPage() {
                       <th className="px-3 py-2.5 text-right text-xs text-white font-semibold">Contributed</th>
                       <th className="px-3 py-2.5 text-right text-xs text-white font-semibold">Interest</th>
                       <th className="px-3 py-2.5 text-right text-xs text-white font-semibold">Balance</th>
+                      <th className="px-3 py-2.5 text-right text-xs text-white font-semibold">Daily Accrual</th>
                       <th className="px-3 py-2.5 text-right text-xs text-white font-semibold">Projected 12mo</th>
                     </tr>
                   </thead>
@@ -343,6 +349,13 @@ export default function SavingPage() {
                             {formatRM(row.current_balance)}
                           </span>
                         </td>
+                        <td className="px-3 py-2.5 text-right">
+                          {row.current_balance > 0 ? (
+                            <span className="text-xs font-semibold text-emerald-600">
+                              +{formatRM(Math.round(row.current_balance * dailyRate * 100) / 100)}/day
+                            </span>
+                          ) : '—'}
+                        </td>
                         <td className="px-3 py-2.5 text-right text-green-700 font-medium">
                           {row.current_balance > 0 ? formatRM(row.projected_12mo) : '—'}
                         </td>
@@ -364,6 +377,9 @@ export default function SavingPage() {
                       <td className="px-3 py-2.5 text-right text-sm text-primary">
                         {formatRM(totalPool)}
                       </td>
+                      <td className="px-3 py-2.5 text-right text-xs text-emerald-600 font-semibold">
+                        +{formatRM(Math.round(totalPool * dailyRate * 100) / 100)}/day
+                      </td>
                       <td className="px-3 py-2.5 text-right text-sm text-green-700">
                         {formatRM(summary.reduce((s, r) => s + r.projected_12mo, 0))}
                       </td>
@@ -378,12 +394,16 @@ export default function SavingPage() {
           {settings && (
             <div className="card p-4 mt-4 flex flex-wrap gap-6 text-sm">
               <div>
-                <div className="text-xs text-gray-400 mb-1">Current Interest Rate</div>
+                <div className="text-xs text-gray-400 mb-1">Standard Rate</div>
                 <div className="font-bold text-green-700 text-lg">{rate}% / month</div>
               </div>
               <div>
-                <div className="text-xs text-gray-400 mb-1">Compounding</div>
-                <div className="font-semibold text-gray-700">Monthly</div>
+                <div className="text-xs text-gray-400 mb-1">🎂 Birthday Rate</div>
+                <div className="font-bold text-pink-600 text-lg">{birthdayRate}% / month</div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-400 mb-1">Daily Pool Growth</div>
+                <div className="font-bold text-emerald-600 text-lg">+{formatRM(Math.round(totalPool * dailyRate * 100) / 100)}/day</div>
               </div>
               <div>
                 <div className="text-xs text-gray-400 mb-1">Last Interest Applied</div>

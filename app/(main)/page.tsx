@@ -5,6 +5,12 @@ import { formatRM, formatDate, getPermitStatus } from '@/lib/utils';
 import HolidayCalendar from '@/components/HolidayCalendar';
 import { useRole } from '@/lib/role-context';
 
+interface BirthdayEntry {
+  id: string; full_name: string; date_of_birth: string;
+  day?: number;       // for this-month list
+  days_until?: number; // for upcoming list
+}
+
 interface DashData {
   active_employees: number;
   month_attendance_days: number;
@@ -13,6 +19,9 @@ interface DashData {
   pending_count: number;
   expiring_list: { id: string; full_name: string; permit_expire: string }[];
   current_month: string;
+  birthdays_this_month: BirthdayEntry[];
+  upcoming_birthdays:   BirthdayEntry[];
+  bin_staff: number; bin_att: number; bin_salary: number;
 }
 
 function currentMonthLabel() {
@@ -22,7 +31,7 @@ function currentMonthLabel() {
 const ADMIN_QUICK = [
   { href: '/projects',   icon: '🏗️', label: 'Projects' },
   { href: '/employees',  icon: '👷', label: 'Employees' },
-  { href: '/attendance', icon: '📋', label: 'Attendance' },
+  { href: '/attendance', icon: '📋', label: 'Record' },
   { href: '/salary',     icon: '💰', label: 'Salary' },
   { href: '/advances',   icon: '💳', label: 'Advances' },
 ];
@@ -32,9 +41,9 @@ export default function DashboardPage() {
   const isAdmin = role === 'admin' || role === 'owner';
 
   const [data, setData] = useState<DashData | null>(null);
-  const [interestApplied, setInterestApplied] = useState<boolean | null>(null);
-  const [applyingInterest, setApplyingInterest] = useState(false);
-  const [interestMsg, setInterestMsg] = useState('');
+  const [interestApplied,   setInterestApplied]   = useState<boolean | null>(null);
+  const [applyingInterest,  setApplyingInterest]  = useState(false);
+  const [interestMsg,       setInterestMsg]        = useState('');
 
   useEffect(() => {
     fetch('/api/dashboard').then(r => r.json()).then(setData);
@@ -48,8 +57,7 @@ export default function DashboardPage() {
   }, [isAdmin]);
 
   async function applyInterest() {
-    setApplyingInterest(true);
-    setInterestMsg('');
+    setApplyingInterest(true); setInterestMsg('');
     try {
       const res = await fetch('/api/savings/apply-interest', { method: 'POST' });
       const d   = await res.json();
@@ -121,8 +129,70 @@ export default function DashboardPage() {
             ))}
       </div>
 
+      {/* Main grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        {/* Expiring permits (admin only) */}
+
+        {/* ── Birthday widget (admin) ── */}
+        {isAdmin && (() => {
+          const bdays = data?.birthdays_this_month ?? [];
+          const upcoming = data?.upcoming_birthdays ?? [];
+          if (bdays.length === 0 && upcoming.length === 0) return null;
+          return (
+            <div className="card">
+              <div className="card-title">🎂 Birthdays</div>
+              {bdays.length > 0 && (
+                <>
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">This Month</p>
+                  <div className="space-y-2 mb-3">
+                    {bdays.map(b => {
+                      const dob = new Date(b.date_of_birth);
+                      const thisYearBday = new Date(new Date().getFullYear(), dob.getMonth(), dob.getDate());
+                      const daysUntil = Math.round((thisYearBday.getTime() - Date.now()) / 86400000);
+                      const isToday = daysUntil === 0;
+                      return (
+                        <div key={b.id} className={`flex items-center gap-3 rounded-lg px-3 py-2 ${isToday ? 'bg-pink-100 ring-2 ring-pink-300' : 'bg-pink-50'}`}>
+                          <span className="text-xl">{isToday ? '🎂' : '🎉'}</span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-pink-800 truncate">{b.full_name}</p>
+                            <p className="text-xs text-pink-500">
+                              {dob.toLocaleDateString('en-MY', { day: 'numeric', month: 'long' })}
+                              {isToday ? ' — Today! 🎊' : ` — in ${daysUntil} day${daysUntil !== 1 ? 's' : ''}`}
+                            </p>
+                          </div>
+                          {isToday && <span className="badge bg-pink-500 text-white text-xs shrink-0">x2 Bonus!</span>}
+                          {!isToday && <span className="badge bg-pink-100 text-pink-600 text-xs shrink-0">x2 Month</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+              {upcoming.length > 0 && (
+                <>
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Upcoming (30 days)</p>
+                  <div className="space-y-1.5">
+                    {upcoming.map(b => {
+                      const dob = new Date(b.date_of_birth);
+                      return (
+                        <div key={b.id} className="flex items-center gap-3 px-3 py-2 bg-gray-50 rounded-lg">
+                          <span className="text-base">🎈</span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-700 truncate">{b.full_name}</p>
+                            <p className="text-xs text-gray-400">
+                              {dob.toLocaleDateString('en-MY', { day: 'numeric', month: 'short' })} — in {b.days_until} day{b.days_until !== 1 ? 's' : ''}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* ── Expiring permits (admin only) ── */}
         {isAdmin && data?.expiring_list?.length ? (
           <div className="card">
             <div className="card-title">⚠ Permits Expiring Soon</div>
@@ -146,7 +216,7 @@ export default function DashboardPage() {
               </table>
             </div>
           </div>
-        ) : <div />}
+        ) : null}
 
         {/* Holiday calendar */}
         <HolidayCalendar mode="upcoming" maxItems={5} />
@@ -179,7 +249,7 @@ export default function DashboardPage() {
           <div className="card-title">Quick Access</div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[
-              { href: '/attendance',  icon: '📋', label: 'Attendance' },
+              { href: '/attendance',  icon: '📋', label: 'Record' },
               { href: '/my-salary',   icon: '💰', label: 'My Salary' },
               { href: '/my-profile',  icon: '👤', label: 'My Profile' },
             ].map(q => (

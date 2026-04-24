@@ -36,6 +36,7 @@ interface EmpData {
   passport_no: string | null; permit_no: string | null;
   bank_name: string | null; bank_account: string | null;
   passport_doc_url: string | null; permit_doc_url: string | null;
+  date_of_birth: string | null;
   status: string;
 }
 interface UserRow {
@@ -54,6 +55,7 @@ interface StaffRow {
   rank: string | null;
   daily_rate: number | null;
   permit_expire: string | null;
+  date_of_birth: string | null;
   emp_status: string | null;
 }
 
@@ -133,6 +135,7 @@ const EMPTY_ACCOUNT = { username: '', password: '', role: 'viewer' };
 const EMPTY_EMP = {
   full_name: '', phone: '', rank: '', daily_rate: '',
   passport_no: '', permit_no: '', permit_expire: '',
+  date_of_birth: '',
   bank_name: '', bank_account: '',
   passport_doc_url: '', permit_doc_url: '',
 };
@@ -168,7 +171,7 @@ export default function StaffPage() {
   // Edit Employee modal
   const [showEmpModal, setShowEmpModal]   = useState(false);
   const [editEmpId, setEditEmpId]         = useState<string | null>(null);
-  const [editEmpForm, setEditEmpForm]     = useState({ ...EMPTY_EMP, status: 'active' });
+  const [editEmpForm, setEditEmpForm]     = useState({ ...EMPTY_EMP, status: 'active', date_of_birth: '' });
   const [empSaving, setEmpSaving]         = useState(false);
 
   // Edit Account modal
@@ -236,16 +239,17 @@ export default function StaffPage() {
   // Build merged staff rows
   const staffRows = useMemo<StaffRow[]>(() => {
     return users.map(u => ({
-      user_id:     u.id,
-      username:    u.username,
-      role:        u.role,
-      user_active: u.active,
-      employee_id: u.employee_id,
-      full_name:   u.employees?.full_name ?? null,
-      rank:        u.employees?.rank ?? null,
-      daily_rate:  u.employees?.daily_rate ?? null,
+      user_id:      u.id,
+      username:     u.username,
+      role:         u.role,
+      user_active:  u.active,
+      employee_id:  u.employee_id,
+      full_name:    u.employees?.full_name ?? null,
+      rank:         u.employees?.rank ?? null,
+      daily_rate:   u.employees?.daily_rate ?? null,
       permit_expire: u.employees?.permit_expire ?? null,
-      emp_status:  u.employees?.status ?? null,
+      date_of_birth: u.employees?.date_of_birth ?? null,
+      emp_status:   u.employees?.status ?? null,
     }));
   }, [users]);
 
@@ -354,6 +358,7 @@ export default function StaffPage() {
       rank: emp.rank || '', daily_rate: String(emp.daily_rate),
       passport_no: emp.passport_no || '', permit_no: emp.permit_no || '',
       permit_expire: emp.permit_expire || '',
+      date_of_birth: emp.date_of_birth || '',
       bank_name: emp.bank_name || '', bank_account: emp.bank_account || '',
       passport_doc_url: emp.passport_doc_url || '', permit_doc_url: emp.permit_doc_url || '',
       status: emp.status,
@@ -526,6 +531,7 @@ export default function StaffPage() {
                   <th className="table-th">Rank</th>
                   <th className="table-th">Daily Rate</th>
                   <th className="table-th">Permit Expiry</th>
+                  <th className="table-th">🎂 Birthday</th>
                   <th className="table-th">Account</th>
                   <th className="table-th">Actions</th>
                 </tr>
@@ -566,6 +572,29 @@ export default function StaffPage() {
                       {/* Permit Expiry */}
                       <td className={`table-td text-sm ${permit?.cls || 'text-gray-400'}`}>
                         {permit?.label || '—'}
+                      </td>
+
+                      {/* Birthday */}
+                      <td className="table-td text-sm">
+                        {row.date_of_birth ? (() => {
+                          const dob = new Date(row.date_of_birth);
+                          const now = new Date();
+                          const dobMonth = dob.getMonth();
+                          const dobDay   = dob.getDate();
+                          const thisYearBday = new Date(now.getFullYear(), dobMonth, dobDay);
+                          const daysUntil = Math.round((thisYearBday.getTime() - now.getTime()) / 86400000);
+                          const isThisMonth = dobMonth === now.getMonth();
+                          const isToday = daysUntil === 0;
+                          return (
+                            <div>
+                              <span className={isThisMonth ? 'font-semibold text-pink-600' : 'text-gray-600'}>
+                                {isToday ? '🎂 ' : isThisMonth ? '🎉 ' : ''}{dob.toLocaleDateString('en-MY', { day: 'numeric', month: 'short' })}
+                              </span>
+                              {isToday && <span className="ml-1 badge bg-pink-100 text-pink-600 text-xs">Today!</span>}
+                              {!isToday && isThisMonth && <span className="ml-1 badge bg-pink-50 text-pink-500 text-xs">This month</span>}
+                            </div>
+                          );
+                        })() : <span className="text-gray-300">—</span>}
                       </td>
 
                       {/* Account Status */}
@@ -751,6 +780,12 @@ export default function StaffPage() {
                 onChange={e => setEmpForm(f => ({ ...f, permit_expire: e.target.value }))} />
             </div>
 
+            <div>
+              <label className="form-label">🎂 Date of Birth</label>
+              <input type="date" className="form-control" value={empForm.date_of_birth}
+                onChange={e => setEmpForm(f => ({ ...f, date_of_birth: e.target.value }))} />
+            </div>
+
             <div className="rounded bg-gray-50 border border-gray-200 px-3 py-2 text-xs text-gray-500">
               💡 Bank details, documents &amp; more can be added by editing the employee after creation.
             </div>
@@ -841,6 +876,28 @@ export default function StaffPage() {
               return <p className="text-xs text-green-600">✅ Valid for {days} days</p>;
             })()}
             {editEmpForm.permit_doc_url && <div className="mt-2"><DocPreview url={editEmpForm.permit_doc_url} label="Permit" /></div>}
+          </div>
+
+          {/* Date of Birth */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="form-label">🎂 Date of Birth</label>
+              <input type="date" className="form-control" value={editEmpForm.date_of_birth}
+                onChange={e => setEditEmpForm(f => ({ ...f, date_of_birth: e.target.value }))} />
+              {editEmpForm.date_of_birth && (() => {
+                const dob = new Date(editEmpForm.date_of_birth);
+                const now = new Date();
+                const age = now.getFullYear() - dob.getFullYear() - (now < new Date(now.getFullYear(), dob.getMonth(), dob.getDate()) ? 1 : 0);
+                const thisYearBday = new Date(now.getFullYear(), dob.getMonth(), dob.getDate());
+                const daysUntil = Math.round((thisYearBday.getTime() - now.getTime()) / 86400000);
+                return (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Age {age} · {daysUntil === 0 ? '🎂 Birthday today!' : daysUntil > 0 ? `${daysUntil}d until birthday` : `${Math.abs(daysUntil)}d since birthday`}
+                  </p>
+                );
+              })()}
+            </div>
+            <div />
           </div>
 
           {/* Bank */}
