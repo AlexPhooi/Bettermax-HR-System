@@ -14,8 +14,8 @@ export async function GET(req: NextRequest) {
   const in60 = new Date(now.getTime() + 60 * 86400000).toISOString().split('T')[0];
   const currentMonthNum = now.getMonth() + 1; // 1-12
 
-  // Worker: return only own stats
-  if (user.role === 'worker') {
+  // Viewer/Editor: return only own stats
+  if (user.role === 'viewer' || user.role === 'editor') {
     if (!user.employee_id) return NextResponse.json({ active_employees: 0, month_attendance_days: 0, month_payroll: 0, permits_expiring: 0, expiring_list: [], expired_list: [], pending_count: 0, current_month: month, birthdays_this_month: [], upcoming_birthdays: [] });
     const { data: att } = await supabase.from('hr_attendance')
       .select('days_worked, hours_worked, status, work_date')
