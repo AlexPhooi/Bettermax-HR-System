@@ -37,12 +37,19 @@ export async function GET(req: NextRequest) {
   } else if (user.role === 'editor') {
     const mode = sp.get('mode');
     if (mode === 'personal' && user.employee_id) {
-      // Leader's own attendance records (for My History tab)
+      // Leader's own attendance records (for My Attendance page)
       query = query.eq('employee_id', user.employee_id);
     } else {
       // Leader sees all records submitted by themselves (team management)
       query = query.eq('submitted_by', user.id);
     }
+  } else if (user.role === 'approval') {
+    const mode = sp.get('mode');
+    if (mode === 'personal' && user.employee_id) {
+      // Approval role viewing own attendance (My Attendance page)
+      query = query.eq('employee_id', user.employee_id);
+    }
+    // No mode=personal → sees all records (for Attendance approval page)
   } else {
     // Admin / owner: apply optional filters
     if (sp.get('employee_id')) query = query.eq('employee_id', sp.get('employee_id')!);

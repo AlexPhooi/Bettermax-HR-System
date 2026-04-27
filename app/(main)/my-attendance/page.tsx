@@ -38,7 +38,7 @@ export default function MyAttendancePage() {
 
   useEffect(() => {
     setLoading(true);
-    fetch(`/api/attendance?month=${month}`)
+    fetch(`/api/attendance?month=${month}&mode=personal`)
       .then(r => r.json())
       .then(d => { setRecords(Array.isArray(d) ? d : []); setLoading(false); })
       .catch(() => setLoading(false));
