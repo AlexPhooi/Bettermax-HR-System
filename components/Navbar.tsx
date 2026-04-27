@@ -106,10 +106,12 @@ export default function Navbar() {
     <>
       <nav className="bg-primary text-white sticky top-0 z-50 shadow-md">
         <div className="flex items-center h-14 px-4 md:px-6">
-          <Link href={isViewer ? '/my-attendance' : isAdmin ? '/' : '/attendance'}
-            className="font-bold text-base md:text-lg mr-6 whitespace-nowrap shrink-0">
+          {/* Logo — toggles mobile menu on tap */}
+          <button
+            onClick={() => setOpen(o => !o)}
+            className="font-bold text-base md:text-lg mr-6 whitespace-nowrap shrink-0 text-white hover:text-white/80 transition-colors md:cursor-default">
             🏢 Bettermax HR
-          </Link>
+          </button>
           <ul className="hidden md:flex gap-0.5 flex-1">
             {navLinks.map(l => (
               <li key={l.href}>
@@ -147,15 +149,6 @@ export default function Navbar() {
           </ul>
 
           <div className="ml-auto flex items-center gap-2">
-            {/* Role badge for non-admin */}
-            {loaded && !isAdmin && (
-              <span className={`hidden sm:inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold
-                ${role === 'approval' ? 'bg-purple-500/30 text-purple-100'
-                : role === 'editor'   ? 'bg-blue-500/30 text-blue-100'
-                : 'bg-green-500/30 text-green-100'}`}>
-                {role === 'approval' ? '✅ Approval' : role === 'editor' ? '✏️ Editor' : '👁️ Viewer'}
-              </span>
-            )}
 
             {/* Permit Expiry Bell — admin only */}
             {isAdmin && (
@@ -240,16 +233,9 @@ export default function Navbar() {
               </div>
             )}
 
-            {username && (
-              <span className="hidden sm:block text-white/60 text-xs">{username}</span>
-            )}
             <button onClick={logout}
               className="text-xs border border-white/30 bg-white/10 hover:bg-white/20 text-white/90 px-3 py-1.5 rounded transition-colors">
               Logout
-            </button>
-            <button onClick={() => setOpen(!open)}
-              className="md:hidden text-white text-2xl leading-none ml-1">
-              ☰
             </button>
           </div>
         </div>
