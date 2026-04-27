@@ -110,7 +110,7 @@ export default function Navbar() {
           <button
             onClick={() => setOpen(o => !o)}
             className="font-bold text-base md:text-lg mr-6 whitespace-nowrap shrink-0 text-white hover:text-white/80 transition-colors md:cursor-default">
-            🏢 Bettermax HR
+            🏢&nbsp;Bettermax HR
           </button>
           <ul className="hidden md:flex gap-0.5 flex-1">
             {navLinks.map(l => (
