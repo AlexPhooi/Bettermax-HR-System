@@ -275,7 +275,7 @@ function EmployeeDashboard({ role }: { role: string }) {
   useEffect(() => {
     fetch('/api/dashboard').then(r => r.json()).then(setDash);
 
-    fetch('/api/employees').then(r => r.json()).then(d => {
+    fetch('/api/employees?self=true').then(r => r.json()).then(d => {
       if (Array.isArray(d) && d.length > 0) setEmp(d[0]);
       else if (d && !Array.isArray(d) && !d.error) setEmp(d);
     });

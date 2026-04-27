@@ -103,7 +103,7 @@ export default function MyProfilePage() {
 
   async function load() {
     setLoading(true);
-    const res = await fetch('/api/employees');
+    const res = await fetch('/api/employees?self=true');
     const d   = await res.json();
     const list = Array.isArray(d) ? d : [];
     setEmp(list[0] || null);

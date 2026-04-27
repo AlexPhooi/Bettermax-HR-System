@@ -6,8 +6,11 @@ export async function GET(req: NextRequest) {
   const user = await getUser(req);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  // Non-admin roles can only see their own employee record
-  if (user.role === 'viewer' || user.role === 'editor' || user.role === 'approval') {
+  const selfOnly = req.nextUrl.searchParams.get('self') === 'true';
+
+  // Viewer/approval always see own record only.
+  // Editor sees own record when ?self=true (dashboard/profile), all employees otherwise (attendance).
+  if (user.role === 'viewer' || user.role === 'approval' || (user.role === 'editor' && selfOnly)) {
     if (!user.employee_id) return NextResponse.json([]);
     const { data, error } = await supabase.from('employees')
       .select('*').eq('id', user.employee_id).is('deleted_at', null).single();
