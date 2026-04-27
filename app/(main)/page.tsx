@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { formatRM, getPermitStatus } from '@/lib/utils';
+import { formatRM, RANK_COLORS } from '@/lib/utils';
 import HolidayCalendar from '@/components/HolidayCalendar';
 import { useRole } from '@/lib/role-context';
 
@@ -362,7 +362,9 @@ function EmployeeDashboard({ role }: { role: string }) {
                     {ROLE_ICON[role]} {ROLE_LABEL[role] || role}
                   </span>
                   {emp?.rank && (
-                    <span className="badge bg-blue-50 text-blue-600 text-xs">{emp.rank}</span>
+                    <span className={`badge text-xs ${RANK_COLORS[emp.rank] ?? 'bg-blue-50 text-blue-600'}`}>
+                      {emp.rank}
+                    </span>
                   )}
                 </div>
               </div>
