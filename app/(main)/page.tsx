@@ -25,7 +25,8 @@ interface DashData {
 }
 interface EmpData {
   id: string; full_name: string; rank: string | null;
-  daily_rate: number; permit_expire: string | null; avatar_url: string | null;
+  daily_rate: number; permit_expire: string | null;
+  date_of_birth: string | null; avatar_url: string | null;
 }
 interface SalaryRecord {
   id: string; month: string; net_salary: number; status: string;
@@ -292,51 +293,105 @@ function EmployeeDashboard({ role }: { role: string }) {
 
   const daysWorked   = dash?.month_attendance_days ?? 0;
   const pendingCount = dash?.pending_count ?? 0;
-  const permitStatus = emp?.permit_expire ? getPermitStatus(emp.permit_expire) : null;
   const loading      = !dash || !emp;
+
+  // ── Birthday ──────────────────────────────────────────────────
+  const now           = new Date();
+  const currentMonth  = now.getMonth() + 1;
+  const currentDay    = now.getDate();
+  const dobMonth      = emp?.date_of_birth ? Number(emp.date_of_birth.slice(5, 7)) : null;
+  const dobDay        = emp?.date_of_birth ? Number(emp.date_of_birth.slice(8, 10)) : null;
+  const isBirthdayMonth = dobMonth !== null && dobMonth === currentMonth;
+  const isBirthdayToday = isBirthdayMonth && dobDay === currentDay;
+
+  // ── Permit Status ─────────────────────────────────────────────
+  function getPermitBadge(expire: string | null) {
+    if (!expire) return null;
+    const days = Math.floor((new Date(expire).getTime() - Date.now()) / 86400000);
+    const dateStr = new Date(expire).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    if (days < 0)   return { icon: '🔴', label: 'Expired', sub: `since ${dateStr}`,   cls: 'bg-red-50 border-red-300 text-red-700' };
+    if (days === 0) return { icon: '🔴', label: 'Expires Today!', sub: dateStr,        cls: 'bg-red-50 border-red-300 text-red-700' };
+    if (days <= 30) return { icon: '🔴', label: `${days} Days Left`, sub: `Expires ${dateStr}`, cls: 'bg-red-50 border-red-300 text-red-700' };
+    if (days <= 60) return { icon: '🟡', label: `${days} Days Left`, sub: `Expires ${dateStr}`, cls: 'bg-yellow-50 border-yellow-300 text-yellow-700' };
+    return           { icon: '🟢', label: 'Active',  sub: `Expires ${dateStr}`,        cls: 'bg-green-50 border-green-200 text-green-700' };
+  }
+  const permitBadge = getPermitBadge(emp?.permit_expire ?? null);
 
   return (
     <div className="p-4 md:p-6 max-w-lg mx-auto space-y-4">
 
       {/* ── Section 1: Basic Information ────────────────────────── */}
-      <div className="card p-4">
+      <div className={`card p-4 overflow-hidden relative ${isBirthdayMonth ? 'border-2 border-pink-300' : ''}`}>
+        {/* Birthday month background shimmer */}
+        {isBirthdayMonth && (
+          <div className="absolute inset-0 bg-gradient-to-br from-pink-50 via-purple-50 to-yellow-50 opacity-60 pointer-events-none" />
+        )}
+
         {loading ? (
-          <div className="flex items-center gap-4 animate-pulse">
-            <div className="w-14 h-14 rounded-full bg-gray-200 shrink-0" />
+          <div className="flex items-center gap-4 animate-pulse relative">
+            <div className="w-16 h-16 rounded-full bg-gray-200 shrink-0" />
             <div className="flex-1 space-y-2">
               <div className="h-5 bg-gray-200 rounded w-2/3" />
               <div className="h-4 bg-gray-200 rounded w-1/2" />
             </div>
           </div>
         ) : (
-          <div className="flex items-center gap-4">
-            {/* Avatar */}
-            <div className="shrink-0">
-              {emp?.avatar_url
-                ? <img src={emp.avatar_url} alt="avatar"
-                    className="w-14 h-14 rounded-full object-cover border-2 border-primary/20" />
-                : <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center text-2xl select-none">
-                    {ROLE_ICON[role] || '👤'}
-                  </div>
-              }
-            </div>
-            {/* Info */}
-            <div className="flex-1 min-w-0">
-              <p className="text-lg font-bold text-gray-800 truncate">{emp?.full_name || '—'}</p>
-              <div className="flex items-center gap-2 mt-1 flex-wrap">
-                <span className={`badge text-xs font-semibold px-2 py-0.5 rounded-full ${ROLE_BADGE[role] || 'bg-gray-100 text-gray-600'}`}>
-                  {ROLE_ICON[role]} {ROLE_LABEL[role] || role}
-                </span>
-                {emp?.rank && (
-                  <span className="badge bg-blue-50 text-blue-600 text-xs">{emp.rank}</span>
+          <div className="relative">
+            {/* Avatar + name row */}
+            <div className="flex items-center gap-4">
+              <div className="shrink-0 relative">
+                {emp?.avatar_url
+                  ? <img src={emp.avatar_url} alt="avatar"
+                      className={`w-16 h-16 rounded-full object-cover border-2 ${isBirthdayMonth ? 'border-pink-400 ring-2 ring-pink-200' : 'border-primary/20'}`} />
+                  : <div className={`w-16 h-16 rounded-full flex items-center justify-center text-3xl select-none ${isBirthdayMonth ? 'bg-pink-100' : 'bg-primary/10'}`}>
+                      {isBirthdayToday ? '🎂' : isBirthdayMonth ? '🎉' : (ROLE_ICON[role] || '👤')}
+                    </div>
+                }
+                {/* Birthday crown overlay */}
+                {isBirthdayToday && (
+                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 text-xl">👑</span>
                 )}
               </div>
-              {permitStatus && (
-                <p className={`text-xs mt-1.5 font-medium ${permitStatus.cls}`}>
-                  📋 Permit: {permitStatus.label}
+
+              <div className="flex-1 min-w-0">
+                <p className={`text-lg font-bold truncate ${isBirthdayMonth ? 'text-pink-800' : 'text-gray-800'}`}>
+                  {emp?.full_name || '—'}
                 </p>
-              )}
+                <div className="flex items-center gap-2 mt-1 flex-wrap">
+                  <span className={`badge text-xs font-semibold px-2 py-0.5 rounded-full ${ROLE_BADGE[role] || 'bg-gray-100 text-gray-600'}`}>
+                    {ROLE_ICON[role]} {ROLE_LABEL[role] || role}
+                  </span>
+                  {emp?.rank && (
+                    <span className="badge bg-blue-50 text-blue-600 text-xs">{emp.rank}</span>
+                  )}
+                </div>
+              </div>
             </div>
+
+            {/* Birthday banner */}
+            {isBirthdayToday && (
+              <div className="mt-3 rounded-xl bg-gradient-to-r from-pink-500 to-purple-500 px-4 py-2.5 text-white">
+                <p className="font-extrabold text-sm">🎂 Happy Birthday, {emp?.full_name?.split(' ')[0]}! 🎊</p>
+                <p className="text-xs opacity-90 mt-0.5">Your site bonus is doubled today — enjoy your special day! 🎁</p>
+              </div>
+            )}
+            {isBirthdayMonth && !isBirthdayToday && (
+              <div className="mt-3 rounded-xl bg-gradient-to-r from-pink-100 to-purple-100 border border-pink-200 px-4 py-2.5">
+                <p className="font-bold text-sm text-pink-700">🎉 Birthday Month!</p>
+                <p className="text-xs text-pink-600 mt-0.5">x2 Site Bonus active all month · Every approved day earns RM 20</p>
+              </div>
+            )}
+
+            {/* Permit status */}
+            {permitBadge && (
+              <div className={`mt-3 flex items-center justify-between rounded-xl border px-3 py-2 ${permitBadge.cls}`}>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide opacity-60 mb-0.5">Work Permit</p>
+                  <p className="font-bold text-sm leading-none">{permitBadge.icon} {permitBadge.label}</p>
+                </div>
+                <p className="text-xs opacity-70 text-right">{permitBadge.sub}</p>
+              </div>
+            )}
           </div>
         )}
       </div>
