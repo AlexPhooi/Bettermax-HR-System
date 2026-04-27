@@ -344,12 +344,15 @@ function EmployeeDashboard({ role }: { role: string }) {
                   ? <img src={emp.avatar_url} alt="avatar"
                       className={`w-16 h-16 rounded-full object-cover border-2 ${isBirthdayMonth ? 'border-pink-400 ring-2 ring-pink-200' : 'border-primary/20'}`} />
                   : <div className={`w-16 h-16 rounded-full flex items-center justify-center text-3xl select-none ${isBirthdayMonth ? 'bg-pink-100' : 'bg-primary/10'}`}>
-                      {isBirthdayToday ? '🎂' : isBirthdayMonth ? '🎉' : (ROLE_ICON[role] || '👤')}
+                      {ROLE_ICON[role] || '👤'}
                     </div>
                 }
-                {/* Birthday crown overlay */}
+                {/* Birthday icon above avatar */}
                 {isBirthdayToday && (
-                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 text-xl">👑</span>
+                  <span className="absolute -top-4 left-1/2 -translate-x-1/2 text-2xl drop-shadow-sm">🎂</span>
+                )}
+                {isBirthdayMonth && !isBirthdayToday && (
+                  <span className="absolute -top-4 left-1/2 -translate-x-1/2 text-2xl drop-shadow-sm">🎉</span>
                 )}
               </div>
 
