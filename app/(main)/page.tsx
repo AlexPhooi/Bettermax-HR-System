@@ -418,14 +418,25 @@ function EmployeeDashboard({ role }: { role: string }) {
         </Link>
 
         {/* c. Saving Account */}
-        <div className="card p-4">
-          <p className="text-xs text-gray-400 uppercase tracking-wide mb-2">Saving Account</p>
-          {savings === null
-            ? <div className="h-8 bg-gray-200 rounded animate-pulse w-2/3" />
-            : <p className="text-xl font-extrabold text-green-600 leading-none">{formatRM(savings)}</p>
-          }
-          <p className="text-xs text-gray-400 mt-2">Current Balance</p>
-        </div>
+        {(role === 'viewer' || role === 'editor') ? (
+          <Link href="/my-saving" className="card p-4 hover:shadow-md transition-shadow text-left block">
+            <p className="text-xs text-gray-400 uppercase tracking-wide mb-2">Saving Account</p>
+            {savings === null
+              ? <div className="h-8 bg-gray-200 rounded animate-pulse w-2/3" />
+              : <p className="text-xl font-extrabold text-green-600 leading-none">{formatRM(savings)}</p>
+            }
+            <p className="text-xs text-gray-400 mt-2">Current Balance →</p>
+          </Link>
+        ) : (
+          <div className="card p-4">
+            <p className="text-xs text-gray-400 uppercase tracking-wide mb-2">Saving Account</p>
+            {savings === null
+              ? <div className="h-8 bg-gray-200 rounded animate-pulse w-2/3" />
+              : <p className="text-xl font-extrabold text-green-600 leading-none">{formatRM(savings)}</p>
+            }
+            <p className="text-xs text-gray-400 mt-2">Current Balance</p>
+          </div>
+        )}
 
         {/* d. Daily Rate (Settings) */}
         <Link href="/my-profile"

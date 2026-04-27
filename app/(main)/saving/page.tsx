@@ -45,7 +45,20 @@ interface Employee {
   current_balance: number;
 }
 
-type Tab = 'overview' | 'release' | 'log';
+type Tab = 'overview' | 'requests' | 'release' | 'log';
+
+interface WithdrawalRequest {
+  id: string;
+  employee_id: string;
+  amount: number;
+  reason: string;
+  reason_detail: string | null;
+  status: 'pending' | 'approved' | 'rejected';
+  created_at: string;
+  reviewed_at: string | null;
+  rejection_note: string | null;
+  employees: { full_name: string; rank: string | null } | null;
+}
 
 const WITHDRAWAL_REASONS = [
   { value: 'emergency_withdrawal', label: 'Emergency' },
@@ -112,6 +125,13 @@ export default function SavingPage() {
   const [txRows,    setTxRows]    = useState<TxRow[]>([]);
   const [txLoading, setTxLoading] = useState(false);
 
+  // Withdrawal requests
+  const [requests,    setRequests]    = useState<WithdrawalRequest[]>([]);
+  const [reqLoading,  setReqLoading]  = useState(false);
+  const [rejectId,    setRejectId]    = useState<string | null>(null);
+  const [rejectNote,  setRejectNote]  = useState('');
+  const [processing,  setProcessing]  = useState<string | null>(null);
+
   // Alert
   const [alertMsg,  setAlertMsg]  = useState('');
   const [alertType, setAlertType] = useState<'success' | 'danger'>('success');
@@ -137,6 +157,41 @@ export default function SavingPage() {
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  // Load withdrawal requests when requests tab selected
+  const loadRequests = useCallback(async () => {
+    setReqLoading(true);
+    const res = await fetch('/api/savings/request');
+    const data = await res.json();
+    setRequests(Array.isArray(data) ? data : []);
+    setReqLoading(false);
+  }, []);
+
+  useEffect(() => { if (tab === 'requests') loadRequests(); }, [tab, loadRequests]);
+
+  const pendingReqCount = requests.filter(r => r.status === 'pending').length;
+
+  async function handleRequest(id: string, action: 'approve' | 'reject') {
+    setProcessing(id);
+    try {
+      const res = await fetch(`/api/savings/request/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, rejection_note: rejectNote }),
+      });
+      const data = await res.json();
+      if (!res.ok) { showAlert(data.error || 'Failed.', 'danger'); return; }
+      showAlert(action === 'approve' ? '✅ Request approved and funds released.' : '❌ Request rejected.');
+      setRejectId(null); setRejectNote('');
+      loadRequests();
+      loadData(); // refresh balances
+    } finally { setProcessing(null); }
+  }
+
+  const REASON_LABEL: Record<string, string> = {
+    permit: 'Permit Renewal', flight: 'Flight Home',
+    emergency: 'Emergency', others: 'Others',
+  };
 
   // Load transactions when log tab + filter changes
   const loadTx = useCallback(async () => {
@@ -278,17 +333,23 @@ export default function SavingPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-bg mb-5">
+      <div className="flex border-b border-bg mb-5 overflow-x-auto">
         {([
-          ['overview', '📊 Overview'],
-          ['release',  '💸 Release Funds'],
-          ['log',      '📋 Transaction Log'],
+          ['overview',  '📊 Overview'],
+          ['requests',  '📥 Requests'],
+          ['release',   '💸 Release Funds'],
+          ['log',       '📋 Transaction Log'],
         ] as const).map(([t, label]) => (
           <button key={t} onClick={() => setTab(t)}
-            className={`px-5 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            className={`relative px-5 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap ${
               tab === t ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}>
             {label}
+            {t === 'requests' && pendingReqCount > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full text-[10px] font-bold leading-4 text-center text-white bg-yellow-500">
+                {pendingReqCount}
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -414,7 +475,106 @@ export default function SavingPage() {
         </div>
       )}
 
-      {/* ── TAB 2: RELEASE FUNDS ── */}
+      {/* ── TAB 2: WITHDRAWAL REQUESTS ── */}
+      {tab === 'requests' && (
+        <div>
+          {reqLoading ? (
+            <div className="card animate-pulse h-40" />
+          ) : requests.length === 0 ? (
+            <div className="card py-12 text-center text-gray-400">No withdrawal requests yet.</div>
+          ) : (
+            <div className="space-y-3">
+              {requests.map(req => {
+                const isPending = req.status === 'pending';
+                return (
+                  <div key={req.id} className={`card p-4 border-l-4 ${
+                    isPending ? 'border-yellow-400' :
+                    req.status === 'approved' ? 'border-green-400' : 'border-red-400'
+                  }`}>
+                    <div className="flex items-start justify-between gap-3 flex-wrap">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap mb-1">
+                          <p className="font-bold text-gray-800">
+                            {req.employees?.full_name ?? '—'}
+                          </p>
+                          {req.employees?.rank && (
+                            <span className="badge bg-blue-50 text-blue-600 text-xs">{req.employees.rank}</span>
+                          )}
+                          <span className={`badge text-xs ${
+                            isPending ? 'bg-yellow-100 text-yellow-700' :
+                            req.status === 'approved' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'
+                          }`}>
+                            {isPending ? '🟡 Pending' : req.status === 'approved' ? '✅ Approved' : '❌ Rejected'}
+                          </span>
+                        </div>
+                        <p className="text-2xl font-extrabold text-primary">{formatRM(req.amount)}</p>
+                        <p className="text-sm text-gray-600 mt-1">
+                          {REASON_LABEL[req.reason] || req.reason}
+                          {req.reason_detail && <span className="text-gray-400"> — {req.reason_detail}</span>}
+                        </p>
+                        <p className="text-xs text-gray-400 mt-1">
+                          Requested: {new Date(req.created_at).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' })}
+                        </p>
+                        {!isPending && req.reviewed_at && (
+                          <p className="text-xs text-gray-400">
+                            Reviewed: {new Date(req.reviewed_at).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' })}
+                          </p>
+                        )}
+                        {req.status === 'rejected' && req.rejection_note && (
+                          <p className="text-xs text-red-600 mt-1">Note: {req.rejection_note}</p>
+                        )}
+                      </div>
+
+                      {/* Action buttons — pending only */}
+                      {isPending && rejectId !== req.id && (
+                        <div className="flex gap-2 shrink-0">
+                          <button
+                            className="btn btn-success text-sm px-4"
+                            disabled={processing === req.id}
+                            onClick={() => handleRequest(req.id, 'approve')}>
+                            {processing === req.id ? '…' : '✅ Approve'}
+                          </button>
+                          <button
+                            className="btn btn-danger text-sm px-4"
+                            onClick={() => { setRejectId(req.id); setRejectNote(''); }}>
+                            ❌ Reject
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Inline reject form */}
+                    {isPending && rejectId === req.id && (
+                      <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
+                        <label className="form-label text-xs">Rejection note (optional)</label>
+                        <input
+                          className="form-control text-sm"
+                          placeholder="e.g. Please resubmit with more details…"
+                          value={rejectNote}
+                          onChange={e => setRejectNote(e.target.value)}
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            className="btn btn-danger text-sm"
+                            disabled={processing === req.id}
+                            onClick={() => handleRequest(req.id, 'reject')}>
+                            {processing === req.id ? 'Rejecting…' : 'Confirm Reject'}
+                          </button>
+                          <button className="btn btn-secondary text-sm" onClick={() => setRejectId(null)}>
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── TAB 3: RELEASE FUNDS ── */}
       {tab === 'release' && (
         <div className="max-w-lg">
           <div className="card p-6 space-y-4">

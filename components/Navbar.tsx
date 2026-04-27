@@ -26,6 +26,7 @@ const EDITOR_NAV = [
   { href: '/attendance',    label: 'Attendance' },
   { href: '/my-attendance', label: 'My Attendance' },
   { href: '/my-salary',     label: 'My Salary' },
+  { href: '/my-saving',     label: 'My Saving' },
   { href: '/my-profile',    label: 'My Profile' },
 ];
 
@@ -33,6 +34,7 @@ const VIEWER_NAV = [
   { href: '/',              label: 'Dashboard' },
   { href: '/my-attendance', label: 'My Attendance' },
   { href: '/my-salary',     label: 'My Salary' },
+  { href: '/my-saving',     label: 'My Saving' },
   { href: '/my-profile',    label: 'My Profile' },
 ];
 
