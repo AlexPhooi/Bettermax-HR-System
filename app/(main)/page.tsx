@@ -60,6 +60,18 @@ function currentMonthLabel() {
   return new Date().toLocaleString('en-GB', { month: 'long', year: 'numeric' });
 }
 
+/* ── Permit status helper (shared by both dashboards) ─────────── */
+function getPermitBadge(expire: string | null) {
+  if (!expire) return null;
+  const days = Math.floor((new Date(expire).getTime() - Date.now()) / 86400000);
+  const dateStr = new Date(expire).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  if (days < 0)   return { icon: '🔴', label: 'Expired',       sub: `since ${dateStr}`,    cls: 'bg-red-50 border-red-300 text-red-700' };
+  if (days === 0) return { icon: '🔴', label: 'Expires Today!', sub: dateStr,               cls: 'bg-red-50 border-red-300 text-red-700' };
+  if (days <= 30) return { icon: '🔴', label: `${days} Days Left`, sub: `Expires ${dateStr}`, cls: 'bg-red-50 border-red-300 text-red-700' };
+  if (days <= 60) return { icon: '🟡', label: `${days} Days Left`, sub: `Expires ${dateStr}`, cls: 'bg-yellow-50 border-yellow-300 text-yellow-700' };
+  return           { icon: '🟢', label: 'Active',              sub: `Expires ${dateStr}`,  cls: 'bg-green-50 border-green-200 text-green-700' };
+}
+
 /* ══════════════════════════════════════════════════════════════════
    ADMIN DASHBOARD
 ══════════════════════════════════════════════════════════════════ */
@@ -223,7 +235,7 @@ function AdminDashboard() {
                 </tr></thead>
                 <tbody>
                   {data.expiring_list.map(e => {
-                    const p = getPermitStatus(e.permit_expire);
+                    const p = getPermitBadge(e.permit_expire);
                     return (
                       <tr key={e.id} className="table-tr">
                         <td className="table-td">{e.full_name}</td>
@@ -305,16 +317,6 @@ function EmployeeDashboard({ role }: { role: string }) {
   const isBirthdayToday = isBirthdayMonth && dobDay === currentDay;
 
   // ── Permit Status ─────────────────────────────────────────────
-  function getPermitBadge(expire: string | null) {
-    if (!expire) return null;
-    const days = Math.floor((new Date(expire).getTime() - Date.now()) / 86400000);
-    const dateStr = new Date(expire).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-    if (days < 0)   return { icon: '🔴', label: 'Expired', sub: `since ${dateStr}`,   cls: 'bg-red-50 border-red-300 text-red-700' };
-    if (days === 0) return { icon: '🔴', label: 'Expires Today!', sub: dateStr,        cls: 'bg-red-50 border-red-300 text-red-700' };
-    if (days <= 30) return { icon: '🔴', label: `${days} Days Left`, sub: `Expires ${dateStr}`, cls: 'bg-red-50 border-red-300 text-red-700' };
-    if (days <= 60) return { icon: '🟡', label: `${days} Days Left`, sub: `Expires ${dateStr}`, cls: 'bg-yellow-50 border-yellow-300 text-yellow-700' };
-    return           { icon: '🟢', label: 'Active',  sub: `Expires ${dateStr}`,        cls: 'bg-green-50 border-green-200 text-green-700' };
-  }
   const permitBadge = getPermitBadge(emp?.permit_expire ?? null);
 
   return (
