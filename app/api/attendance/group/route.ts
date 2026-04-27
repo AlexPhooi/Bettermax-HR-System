@@ -3,13 +3,13 @@
 // On approval: auto-credits savings ledger for any site_bonus > 0
 // Birthday month: x2 site bonus (RM20 instead of RM10)
 import { NextRequest, NextResponse } from 'next/server';
-import { getUser, isManager } from '@/lib/auth';
+import { getUser, isApprover } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 
 export async function PATCH(req: NextRequest) {
   const user = await getUser(req);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (!isManager(user.role)) return NextResponse.json({ error: 'Admin/Owner only.' }, { status: 403 });
+  if (!isApprover(user.role)) return NextResponse.json({ error: 'Approver/Admin/Owner only.' }, { status: 403 });
 
   const body = await req.json();
   const { ids, status, site_clean, work_hours, ot_hours } = body;
