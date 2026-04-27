@@ -36,6 +36,7 @@ interface EmpData {
   passport_no: string | null; permit_no: string | null;
   bank_name: string | null; bank_account: string | null;
   passport_doc_url: string | null; permit_doc_url: string | null;
+  avatar_url: string | null;
   date_of_birth: string | null;
   status: string;
 }
@@ -138,6 +139,7 @@ const EMPTY_EMP = {
   date_of_birth: '',
   bank_name: '', bank_account: '',
   passport_doc_url: '', permit_doc_url: '',
+  avatar_url: '',
 };
 
 // ── Main Page ──────────────────────────────────────────────────────────
@@ -347,23 +349,34 @@ export default function StaffPage() {
   }
 
   // ── Edit Employee details ───────────────────────────────────────────
-  function openEditEmp(row: StaffRow) {
+  // Always fetch fresh employee data to avoid overwriting worker's own PATCH updates
+  async function openEditEmp(row: StaffRow) {
     if (!row.employee_id) return;
-    const u = users.find(u => u.employee_id === row.employee_id);
-    const emp = u?.employees;
+    setEditEmpId(row.employee_id);
+    setShowEmpModal(true); // open modal immediately (form will populate)
+
+    // Fetch fresh employee data directly from DB
+    const empRes = await fetch('/api/employees').then(r => r.json());
+    const empList: EmpData[] = Array.isArray(empRes) ? empRes : [];
+    const emp = empList.find(e => e.id === row.employee_id);
     if (!emp) return;
-    setEditEmpId(emp.id);
+
     setEditEmpForm({
-      full_name: emp.full_name, phone: emp.phone || '',
-      rank: emp.rank || '', daily_rate: String(emp.daily_rate),
-      passport_no: emp.passport_no || '', permit_no: emp.permit_no || '',
-      permit_expire: emp.permit_expire || '',
-      date_of_birth: emp.date_of_birth || '',
-      bank_name: emp.bank_name || '', bank_account: emp.bank_account || '',
-      passport_doc_url: emp.passport_doc_url || '', permit_doc_url: emp.permit_doc_url || '',
-      status: emp.status,
+      full_name:       emp.full_name,
+      phone:           emp.phone           || '',
+      rank:            emp.rank            || '',
+      daily_rate:      String(emp.daily_rate),
+      passport_no:     emp.passport_no     || '',
+      permit_no:       emp.permit_no       || '',
+      permit_expire:   emp.permit_expire   || '',
+      date_of_birth:   emp.date_of_birth   || '',
+      bank_name:       emp.bank_name       || '',
+      bank_account:    emp.bank_account    || '',
+      passport_doc_url: emp.passport_doc_url || '',
+      permit_doc_url:   emp.permit_doc_url   || '',
+      avatar_url:       emp.avatar_url       || '',
+      status:           emp.status,
     });
-    setShowEmpModal(true);
   }
 
   async function handleEmpSubmit(e: React.FormEvent) {
