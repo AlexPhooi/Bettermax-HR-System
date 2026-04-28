@@ -169,16 +169,32 @@ function HourPicker({ value, onChange, max, label, prefix = '' }: {
 }
 
 // Photo upload button for standalone use
-function PhotoBtn({ label, url, onUrl, type, photoLabel }: {
-  label: string; url: string | null; onUrl: (url: string) => void; type: string; photoLabel?: string;
+// onUploadChange: called with true when upload starts, false when it ends (success or error)
+function PhotoBtn({ label, url, onUrl, type, photoLabel, onUploadChange }: {
+  label: string; url: string | null; onUrl: (url: string) => void;
+  type: string; photoLabel?: string; onUploadChange?: (uploading: boolean) => void;
 }) {
   const ref = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [stuck,     setStuck]     = useState(false);      // true after 30 s with no result
+  const stuckTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function markUpload(val: boolean) {
+    setUploading(val);
+    onUploadChange?.(val);
+    if (val) {
+      setStuck(false);
+      stuckTimer.current = setTimeout(() => setStuck(true), 30_000);
+    } else {
+      if (stuckTimer.current) clearTimeout(stuckTimer.current);
+      setStuck(false);
+    }
+  }
 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    setUploading(true);
+    markUpload(true);
     try {
       const fd = new FormData();
       fd.append('file', file);
@@ -187,7 +203,9 @@ function PhotoBtn({ label, url, onUrl, type, photoLabel }: {
       const res  = await fetch('/api/upload', { method: 'POST', body: fd });
       const data = await res.json();
       if (res.ok && data.url) onUrl(data.url);
-    } finally { setUploading(false); if (ref.current) ref.current.value = ''; }
+    } catch {
+      /* network error handled by stuck UI */
+    } finally { markUpload(false); if (ref.current) ref.current.value = ''; }
   }
 
   return (
@@ -200,11 +218,17 @@ function PhotoBtn({ label, url, onUrl, type, photoLabel }: {
           </a>
         : <div className="w-20 h-20 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center text-gray-300 text-3xl">📷</div>
       }
-      <input ref={ref} type="file" accept="image/*" className="hidden" onChange={handleFile} />
-      <button type="button" disabled={uploading} onClick={() => ref.current?.click()}
-        className={`btn btn-sm text-xs ${url ? 'btn-outline' : 'btn-primary'}`}>
-        {uploading ? '⏳' : url ? '↻ Replace' : '📷 Upload'}
+      <input ref={ref} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFile} />
+      <button type="button" disabled={uploading && !stuck} onClick={() => ref.current?.click()}
+        className={`btn btn-sm text-xs ${url ? 'btn-outline' : uploading ? 'btn-outline opacity-60' : 'btn-primary'}`}>
+        {uploading && !stuck ? '⏳ Uploading…'
+         : stuck             ? '⚠️ Retry'
+         : url               ? '↻ Replace'
+                             : '📷 Upload'}
       </button>
+      {stuck && (
+        <p className="text-xs text-red-500 text-center max-w-[80px]">Slow connection — tap Retry</p>
+      )}
     </div>
   );
 }
@@ -295,7 +319,13 @@ function CompleteSessionCard({ draftRecs, empList, projList, showAlert, onDone }
   const [frontPhoto, setFrontPhoto] = useState<string | null>(null);
   const [backPhoto,  setBackPhoto]  = useState<string | null>(null);
   const [storePhoto, setStorePhoto] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
+  const [saving,        setSaving]        = useState(false);
+  const [uploadingCount, setUploadingCount] = useState(0);   // # photos currently uploading
+
+  // Called by each PhotoBtn when its upload starts/ends
+  function onPhotoUpload(active: boolean) {
+    setUploadingCount(n => active ? n + 1 : Math.max(0, n - 1));
+  }
   const [schedule, setSchedule] = useState<WorkSchedule>(DEFAULT_SCHEDULE);
 
   const sessionProject      = projList.find(p => p.id === draftRecs[0]?.project_id);
@@ -471,20 +501,30 @@ function CompleteSessionCard({ draftRecs, empList, projList, showAlert, onDone }
       <div>
         <p className="form-label mb-3">Group Photos</p>
         <div className="flex gap-6 flex-wrap">
-          <PhotoBtn label="Check-Out Photo *" url={coPhoto} onUrl={setCoPhoto} type="check_out_photo" />
+          <PhotoBtn label="Check-Out Photo *" url={coPhoto} onUrl={setCoPhoto} type="check_out_photo" onUploadChange={onPhotoUpload} />
         </div>
       </div>
       <div>
         <p className="form-label mb-3">Site Photos (for bonus review)</p>
         <div className="flex gap-6 flex-wrap">
-          <PhotoBtn label="Front"  url={frontPhoto} onUrl={setFrontPhoto} type="site_front" photoLabel="front" />
-          <PhotoBtn label="Back"   url={backPhoto}  onUrl={setBackPhoto}  type="site_back"  photoLabel="back"  />
-          <PhotoBtn label="Store"  url={storePhoto} onUrl={setStorePhoto} type="site_store" photoLabel="store" />
+          <PhotoBtn label="Front"  url={frontPhoto} onUrl={setFrontPhoto} type="site_front" photoLabel="front"  onUploadChange={onPhotoUpload} />
+          <PhotoBtn label="Back"   url={backPhoto}  onUrl={setBackPhoto}  type="site_back"  photoLabel="back"   onUploadChange={onPhotoUpload} />
+          <PhotoBtn label="Store"  url={storePhoto} onUrl={setStorePhoto} type="site_store" photoLabel="store"  onUploadChange={onPhotoUpload} />
         </div>
         <p className="text-xs text-gray-400 mt-2">Boss reviews site photos to grant <strong>+RM10</strong> site bonus for workers ≥8h.</p>
       </div>
-      <button type="button" disabled={saving} onClick={handleComplete} className="btn btn-primary w-full">
-        {saving ? 'Submitting…' : '📤 Submit for Approval'}
+
+      {/* Upload progress notice */}
+      {uploadingCount > 0 && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-700 text-sm">
+          <span className="animate-spin">⏳</span>
+          <span>Uploading photo{uploadingCount > 1 ? 's' : ''}… please wait before submitting.</span>
+        </div>
+      )}
+
+      <button type="button" disabled={saving || uploadingCount > 0} onClick={handleComplete}
+        className={`btn btn-primary w-full ${uploadingCount > 0 ? 'opacity-50 cursor-not-allowed' : ''}`}>
+        {saving ? 'Submitting…' : uploadingCount > 0 ? '⏳ Waiting for upload…' : '📤 Submit for Approval'}
       </button>
     </div>
   );
@@ -514,7 +554,13 @@ function LeaderView() {
   const [autoLoading, setAutoLoading] = useState(false);
   const [autoCount,   setAutoCount]   = useState<number | null>(null);
   const [ciPhoto,    setCiPhoto]    = useState<string | null>(null);
+  const [expandedBanners, setExpandedBanners] = useState<Set<string>>(new Set());
 
+  function toggleBanner(key: string) {
+    setExpandedBanners(prev => {
+      const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n;
+    });
+  }
 
   function showAlert(msg: string, type: 'success' | 'danger' | 'info' = 'success') {
     setAlertMsg(msg); setAlertType(type); setTimeout(() => setAlertMsg(''), 5000);
@@ -626,36 +672,101 @@ function LeaderView() {
           📅 Today — {new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}
         </h2>
 
-        {/* Status banners — one per submitted session */}
+        {/* Status banners — one per submitted session, tap to expand worker summary */}
         {submittedSessions.map(s => {
-          const key = s.recs[0]?.project_id || 'none';
+          const key         = s.recs[0]?.project_id || 'none';
           const projectName = s.project?.name || 'No project';
+          const isOpen      = expandedBanners.has(key);
+          const totalGong   = s.recs.reduce((acc, r) => acc + Number(r.days_worked || 0), 0);
+          const colorCls    = s.dominantStatus === 'approved' ? 'border-green-400 bg-green-50' :
+                              s.dominantStatus === 'rejected' ? 'border-red-400 bg-red-50' :
+                              'border-yellow-400 bg-yellow-50';
+          const textCls     = s.dominantStatus === 'approved' ? 'text-green-800' :
+                              s.dominantStatus === 'rejected' ? 'text-red-800' : 'text-yellow-800';
+          const subCls      = s.dominantStatus === 'approved' ? 'text-green-700' :
+                              s.dominantStatus === 'rejected' ? 'text-red-700' : 'text-yellow-700';
           return (
-            <div key={key} className={`card border-l-4 mb-3 ${
-              s.dominantStatus === 'approved' ? 'border-green-400 bg-green-50' :
-              s.dominantStatus === 'rejected' ? 'border-red-400 bg-red-50' :
-              'border-yellow-400 bg-yellow-50'
-            }`}>
+            <div key={key} className={`card border-l-4 mb-3 ${colorCls} cursor-pointer select-none`}
+              onClick={() => toggleBanner(key)}>
+              {/* Header row */}
               <div className="flex items-center gap-3">
                 <span className="text-2xl">
                   {s.dominantStatus === 'approved' ? '✅' : s.dominantStatus === 'rejected' ? '❌' : '🟡'}
                 </span>
-                <div>
-                  <p className={`font-semibold ${
-                    s.dominantStatus === 'approved' ? 'text-green-800' :
-                    s.dominantStatus === 'rejected' ? 'text-red-800' : 'text-yellow-800'
-                  }`}>
+                <div className="flex-1">
+                  <p className={`font-semibold ${textCls}`}>
                     {projectName} —{' '}
                     {s.dominantStatus === 'approved' ? 'Approved' :
                      s.dominantStatus === 'rejected' ? 'Rejected — contact admin' :
                      'Submitted, awaiting approval'}
                   </p>
-                  <p className={`text-sm mt-0.5 ${
-                    s.dominantStatus === 'approved' ? 'text-green-700' :
-                    s.dominantStatus === 'rejected' ? 'text-red-700' : 'text-yellow-700'
-                  }`}>{s.recs.length} record{s.recs.length !== 1 ? 's' : ''}</p>
+                  <p className={`text-sm mt-0.5 ${subCls}`}>
+                    {s.recs.length} worker{s.recs.length !== 1 ? 's' : ''} · {totalGong.toFixed(2)} 工 total
+                  </p>
                 </div>
+                <span className={`text-sm ${subCls}`}>{isOpen ? '▲' : '▼'}</span>
               </div>
+
+              {/* Expandable worker summary */}
+              {isOpen && (
+                <div className="mt-3 border-t border-black/10 pt-3" onClick={e => e.stopPropagation()}>
+                  <div className="overflow-x-auto rounded-lg border border-black/10">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-black/5">
+                          <th className="text-left px-3 py-2 font-semibold text-xs">Worker</th>
+                          <th className="text-center px-2 py-2 font-semibold text-xs">In</th>
+                          <th className="text-center px-2 py-2 font-semibold text-xs">Out</th>
+                          <th className="text-right px-3 py-2 font-semibold text-xs">工</th>
+                          <th className="text-right px-3 py-2 font-semibold text-xs">Bonus</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {s.recs.map(r => (
+                          <tr key={r.id} className="border-t border-black/5">
+                            <td className="px-3 py-2 truncate max-w-[120px]">
+                              {empList.find(e => e.id === r.employee_id)?.full_name || r.employee_id}
+                            </td>
+                            <td className="px-2 py-2 text-center text-xs font-mono">
+                              {r.check_in_time  ? r.check_in_time.slice(0, 5)  : '—'}
+                            </td>
+                            <td className="px-2 py-2 text-center text-xs font-mono">
+                              {r.check_out_time ? r.check_out_time.slice(0, 5) : '—'}
+                            </td>
+                            <td className="px-3 py-2 text-right font-semibold">
+                              {Number(r.days_worked || 0).toFixed(2)}
+                            </td>
+                            <td className="px-3 py-2 text-right text-xs">
+                              {Number(r.site_bonus) > 0
+                                ? <span className="text-green-700 font-semibold">+RM{r.site_bonus}</span>
+                                : <span className="text-gray-400">—</span>}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {/* Photos row */}
+                  {(s.recs[0]?.check_in_photo_url || s.recs[0]?.check_out_photo_url) && (
+                    <div className="flex gap-3 mt-3">
+                      {s.recs[0]?.check_in_photo_url && (
+                        <a href={s.recs[0].check_in_photo_url} target="_blank" rel="noopener noreferrer" className="flex flex-col items-center gap-1">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={s.recs[0].check_in_photo_url} alt="Check-in" className="w-14 h-14 object-cover rounded-lg border border-black/10" />
+                          <span className="text-xs text-gray-500">Check-in</span>
+                        </a>
+                      )}
+                      {s.recs[0]?.check_out_photo_url && (
+                        <a href={s.recs[0].check_out_photo_url} target="_blank" rel="noopener noreferrer" className="flex flex-col items-center gap-1">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={s.recs[0].check_out_photo_url} alt="Check-out" className="w-14 h-14 object-cover rounded-lg border border-black/10" />
+                          <span className="text-xs text-gray-500">Check-out</span>
+                        </a>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           );
         })}
