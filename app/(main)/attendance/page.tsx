@@ -123,7 +123,7 @@ function PhotoUploadBtn({ url, type, photoLabel, onUrl }: {
 
   return (
     <>
-      <input ref={ref} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFile} />
+      <input ref={ref} type="file" accept="image/*" className="hidden" onChange={handleFile} />
       <button type="button" disabled={uploading} onClick={() => ref.current?.click()}
         className={`btn btn-sm text-xs ${url ? 'btn-outline' : 'btn-primary'}`}>
         {uploading ? '⏳' : url ? '↻' : '📷'}
@@ -184,7 +184,7 @@ function PhotoBtn({ label, url, onUrl, type, photoLabel }: {
           </a>
         : <div className="w-20 h-20 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center text-gray-300 text-3xl">📷</div>
       }
-      <input ref={ref} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFile} />
+      <input ref={ref} type="file" accept="image/*" className="hidden" onChange={handleFile} />
       <button type="button" disabled={uploading} onClick={() => ref.current?.click()}
         className={`btn btn-sm text-xs ${url ? 'btn-outline' : 'btn-primary'}`}>
         {uploading ? '⏳' : url ? '↻ Replace' : '📷 Upload'}
