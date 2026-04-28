@@ -4,6 +4,8 @@ import { formatDate, formatRM, getCurrentMonth } from '@/lib/utils';
 import { useRole } from '@/lib/role-context';
 
 // ── Types ─────────────────────────────────────────────────────────────
+interface WorkerRow { employee_id: string; full_name: string; work_hours: number; ot_hours: number; }
+
 interface AttRecord {
   id: string;
   employee_id: string;
@@ -284,9 +286,13 @@ function LeaderView() {
   const [autoCount,   setAutoCount]   = useState<number | null>(null);
   const [ciPhoto,    setCiPhoto]    = useState<string | null>(null);
 
-  // Complete form
-  const [workHours,  setWorkHours]  = useState(8);
-  const [otHours,    setOtHours]    = useState(0);
+  // Complete form — per-worker hours
+  const [workerRows,    setWorkerRows]    = useState<WorkerRow[]>([]);
+  const [newWorkerRows, setNewWorkerRows] = useState<WorkerRow[]>([]);
+  const [bulkWork,      setBulkWork]      = useState(8);
+  const [bulkOt,        setBulkOt]        = useState(0);
+  const [addOpen,       setAddOpen]       = useState(false);
+  const [addEmpId,      setAddEmpId]      = useState('');
   const [coPhoto,    setCoPhoto]    = useState<string | null>(null);
   const [frontPhoto, setFrontPhoto] = useState<string | null>(null);
   const [backPhoto,  setBackPhoto]  = useState<string | null>(null);
@@ -349,6 +355,26 @@ function LeaderView() {
   const sessionProject = hasDraft ? projList.find(p => p.id === draftRecs[0].project_id) : null;
   const sessionCheckInPhoto = hasDraft ? draftRecs[0].check_in_photo_url : null;
 
+  // Initialise per-worker rows whenever the draft set changes
+  const draftKey = draftRecs.map(r => r.id).join(',');
+  useEffect(() => {
+    if (draftRecs.length === 0 || empList.length === 0) return;
+    setWorkerRows(draftRecs.map(r => ({
+      employee_id: r.employee_id,
+      full_name: empList.find(e => e.id === r.employee_id)?.full_name || r.employee_id,
+      work_hours: 8,
+      ot_hours:   0,
+    })));
+    setNewWorkerRows([]);
+    setAddOpen(false);
+    setAddEmpId('');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftKey, empList.length]);
+
+  const draftedIds = new Set(draftRecs.map(r => r.employee_id));
+  const addedIds   = new Set(newWorkerRows.map(r => r.employee_id));
+  const addableEmps = empList.filter(e => !draftedIds.has(e.id) && !addedIds.has(e.id));
+
   async function handleCheckIn() {
     if (checkedIds.size === 0) { showAlert('Select at least one worker.', 'danger'); return; }
     if (!ciPhoto) { showAlert('Check-in group photo is required.', 'danger'); return; }
@@ -367,16 +393,41 @@ function LeaderView() {
     } finally { setSaving(false); }
   }
 
+  function handleAddWorker() {
+    const emp = empList.find(e => e.id === addEmpId);
+    if (!emp) return;
+    setNewWorkerRows(prev => [...prev, { employee_id: emp.id, full_name: emp.full_name, work_hours: 8, ot_hours: 0 }]);
+    setAddEmpId('');
+    setAddOpen(false);
+  }
+
+  function updateRow(idx: number, field: 'work_hours' | 'ot_hours', val: number, isNew = false) {
+    if (isNew) setNewWorkerRows(rows => rows.map((r, i) => i === idx ? { ...r, [field]: val } : r));
+    else       setWorkerRows(rows => rows.map((r, i) => i === idx ? { ...r, [field]: val } : r));
+  }
+
+  function applyBulk() {
+    setWorkerRows(rows => rows.map(r => ({ ...r, work_hours: bulkWork, ot_hours: bulkOt })));
+    setNewWorkerRows(rows => rows.map(r => ({ ...r, work_hours: bulkWork, ot_hours: bulkOt })));
+  }
+
   async function handleComplete() {
     if (!coPhoto) { showAlert('Check-out group photo is required.', 'danger'); return; }
+    if (workerRows.length === 0) { showAlert('No workers in session.', 'danger'); return; }
     setSaving(true);
     try {
       const res = await fetch('/api/attendance/complete', {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ project_id: draftRecs[0]?.project_id || null, work_date: today(),
-          work_hours: workHours, ot_hours: otHours,
-          check_out_photo_url: coPhoto, site_photo_front_url: frontPhoto,
-          site_photo_back_url: backPhoto, site_photo_store_url: storePhoto }),
+        body: JSON.stringify({
+          project_id:  draftRecs[0]?.project_id || null,
+          work_date:   draftRecs[0]?.work_date || today(),
+          workers:     workerRows.map(r => ({ employee_id: r.employee_id, work_hours: r.work_hours, ot_hours: r.ot_hours })),
+          new_workers: newWorkerRows.map(r => ({ employee_id: r.employee_id, work_hours: r.work_hours, ot_hours: r.ot_hours })),
+          check_out_photo_url:  coPhoto,
+          site_photo_front_url: frontPhoto,
+          site_photo_back_url:  backPhoto,
+          site_photo_store_url: storePhoto,
+        }),
       });
       const data = await res.json();
       if (!res.ok) { showAlert(data.error, 'danger'); return; }
@@ -385,8 +436,6 @@ function LeaderView() {
       loadAll();
     } finally { setSaving(false); }
   }
-
-  const totalGong = ((workHours + otHours) / 8).toFixed(2);
 
   if (loading) return <div className="p-8 text-center text-gray-400">Loading…</div>;
 
@@ -427,11 +476,92 @@ function LeaderView() {
                 </a>
               )}
             </div>
-            <HourPicker label="Working Hours" value={workHours} max={8} onChange={setWorkHours} />
-            <HourPicker label="OT Hours" value={otHours} max={8} onChange={setOtHours} prefix="+" />
-            <div className="rounded-lg bg-primary/5 px-4 py-3 text-center">
-              <span className="text-3xl font-bold text-primary">{totalGong} 工</span>
-              <p className="text-xs text-gray-500 mt-1">{workHours}h work + {otHours}h OT = {workHours + otHours}h total</p>
+            {/* ── Per-worker hours table ── */}
+            <div>
+              <p className="form-label mb-2">Hours per Worker</p>
+              <div className="border border-gray-200 rounded-lg overflow-hidden">
+                {/* Header */}
+                <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 border-b border-gray-200 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  <span className="flex-1">Worker</span>
+                  <span className="w-16 text-center">Work</span>
+                  <span className="w-16 text-center">OT</span>
+                  <span className="w-12 text-right">工</span>
+                </div>
+                {/* Existing (morning check-in) workers */}
+                {workerRows.map((w, i) => {
+                  const gong = ((w.work_hours + w.ot_hours) / 8).toFixed(2);
+                  return (
+                    <div key={w.employee_id} className="flex items-center gap-2 px-3 py-2.5 border-b border-gray-100 last:border-0">
+                      <span className="flex-1 text-sm text-gray-800 truncate">{w.full_name}</span>
+                      <select value={w.work_hours} onChange={e => updateRow(i, 'work_hours', Number(e.target.value))}
+                        className="w-16 text-sm border border-gray-200 rounded px-1 py-1 bg-white text-center">
+                        {[0,1,2,3,4,5,6,7,8].map(h => <option key={h} value={h}>{h}h</option>)}
+                      </select>
+                      <select value={w.ot_hours} onChange={e => updateRow(i, 'ot_hours', Number(e.target.value))}
+                        className="w-16 text-sm border border-gray-200 rounded px-1 py-1 bg-white text-center">
+                        {[0,1,2,3,4,5,6,7,8].map(h => <option key={h} value={h}>+{h}h</option>)}
+                      </select>
+                      <span className="w-12 text-right text-xs font-semibold text-primary">{gong}</span>
+                    </div>
+                  );
+                })}
+                {/* Late-join workers */}
+                {newWorkerRows.map((w, i) => {
+                  const gong = ((w.work_hours + w.ot_hours) / 8).toFixed(2);
+                  return (
+                    <div key={w.employee_id} className="flex items-center gap-2 px-3 py-2.5 border-b border-gray-100 bg-blue-50">
+                      <span className="flex-1 text-sm text-blue-800 truncate">
+                        {w.full_name} <span className="text-xs text-blue-400">(late join)</span>
+                      </span>
+                      <select value={w.work_hours} onChange={e => updateRow(i, 'work_hours', Number(e.target.value), true)}
+                        className="w-16 text-sm border border-blue-200 rounded px-1 py-1 bg-white text-center">
+                        {[0,1,2,3,4,5,6,7,8].map(h => <option key={h} value={h}>{h}h</option>)}
+                      </select>
+                      <select value={w.ot_hours} onChange={e => updateRow(i, 'ot_hours', Number(e.target.value), true)}
+                        className="w-16 text-sm border border-blue-200 rounded px-1 py-1 bg-white text-center">
+                        {[0,1,2,3,4,5,6,7,8].map(h => <option key={h} value={h}>+{h}h</option>)}
+                      </select>
+                      <span className="w-12 text-right text-xs font-semibold text-blue-600">{gong}</span>
+                      <button onClick={() => setNewWorkerRows(rows => rows.filter((_, idx) => idx !== i))}
+                        className="text-red-400 hover:text-red-600 text-sm ml-1">✕</button>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Apply to all */}
+              <div className="flex items-center gap-2 mt-2 flex-wrap">
+                <span className="text-xs text-gray-500 shrink-0">Set all:</span>
+                <select value={bulkWork} onChange={e => setBulkWork(Number(e.target.value))}
+                  className="text-sm border border-gray-200 rounded px-1.5 py-1 bg-white w-16">
+                  {[0,1,2,3,4,5,6,7,8].map(h => <option key={h} value={h}>{h}h</option>)}
+                </select>
+                <select value={bulkOt} onChange={e => setBulkOt(Number(e.target.value))}
+                  className="text-sm border border-gray-200 rounded px-1.5 py-1 bg-white w-16">
+                  {[0,1,2,3,4,5,6,7,8].map(h => <option key={h} value={h}>+{h}h</option>)}
+                </select>
+                <button onClick={applyBulk} className="btn btn-sm btn-outline text-xs px-3">Apply to all</button>
+              </div>
+
+              {/* Add late worker */}
+              <div className="mt-2">
+                {addOpen ? (
+                  <div className="flex items-center gap-2 mt-1">
+                    <select value={addEmpId} onChange={e => setAddEmpId(e.target.value)}
+                      className="flex-1 text-sm border border-gray-200 rounded px-2 py-1.5 bg-white">
+                      <option value="">Select worker…</option>
+                      {addableEmps.map(e => <option key={e.id} value={e.id}>{e.full_name}</option>)}
+                    </select>
+                    <button onClick={handleAddWorker} disabled={!addEmpId} className="btn btn-sm btn-primary text-xs px-3">Add</button>
+                    <button onClick={() => { setAddOpen(false); setAddEmpId(''); }} className="btn btn-sm btn-outline text-xs">✕</button>
+                  </div>
+                ) : (
+                  <button onClick={() => setAddOpen(true)}
+                    className="text-sm text-primary hover:underline flex items-center gap-1 mt-1">
+                    + Add late worker
+                  </button>
+                )}
+              </div>
             </div>
             <div>
               <p className="form-label mb-3">Group Photos</p>
