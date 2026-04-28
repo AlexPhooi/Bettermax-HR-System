@@ -351,6 +351,12 @@ function LeaderView() {
   const nonDraftRecs = todayRecs.filter(r => r.status !== 'draft');
   const hasDraft     = draftRecs.length > 0;
   const hasSubmitted = nonDraftRecs.length > 0 && !hasDraft;
+  // Dominant status for banner: rejected > pending > approved
+  const todayStatus  = hasSubmitted
+    ? nonDraftRecs.some(r => r.status === 'rejected') ? 'rejected'
+    : nonDraftRecs.some(r => r.status === 'pending')  ? 'pending'
+    : 'approved'
+    : null;
 
   const sessionProject = hasDraft ? projList.find(p => p.id === draftRecs[0].project_id) : null;
   const sessionCheckInPhoto = hasDraft ? draftRecs[0].check_in_photo_url : null;
@@ -450,13 +456,35 @@ function LeaderView() {
           📅 Today — {new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}
         </h2>
 
-        {hasSubmitted && (
+        {hasSubmitted && todayStatus === 'approved' && (
+          <div className="card border-l-4 border-green-400 bg-green-50">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">✅</span>
+              <div>
+                <p className="font-semibold text-green-800">Today&apos;s attendance approved</p>
+                <p className="text-sm text-green-700 mt-0.5">{nonDraftRecs.length} record{nonDraftRecs.length !== 1 ? 's' : ''}</p>
+              </div>
+            </div>
+          </div>
+        )}
+        {hasSubmitted && todayStatus === 'pending' && (
           <div className="card border-l-4 border-yellow-400 bg-yellow-50">
             <div className="flex items-center gap-3">
               <span className="text-2xl">🟡</span>
               <div>
                 <p className="font-semibold text-yellow-800">Today&apos;s attendance submitted — awaiting approval</p>
                 <p className="text-sm text-yellow-700 mt-0.5">{nonDraftRecs.length} record{nonDraftRecs.length !== 1 ? 's' : ''}</p>
+              </div>
+            </div>
+          </div>
+        )}
+        {hasSubmitted && todayStatus === 'rejected' && (
+          <div className="card border-l-4 border-red-400 bg-red-50">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">❌</span>
+              <div>
+                <p className="font-semibold text-red-800">Today&apos;s attendance was rejected</p>
+                <p className="text-sm text-red-700 mt-0.5">{nonDraftRecs.length} record{nonDraftRecs.length !== 1 ? 's' : ''} — contact admin</p>
               </div>
             </div>
           </div>
