@@ -26,8 +26,9 @@ export async function PUT(req: NextRequest) {
   const updated: Record<string, string> = {};
 
   for (const [key, value] of Object.entries(body)) {
-    if (typeof value !== 'string' && typeof value !== 'number') continue;
-    const strVal = String(value);
+    if (value === null || value === undefined) continue;
+    if (typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'object') continue;
+    const strVal = typeof value === 'object' ? JSON.stringify(value) : String(value);
 
     // Validate known keys
     if (key === 'salary_payment_day') {

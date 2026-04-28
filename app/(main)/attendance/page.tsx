@@ -2,9 +2,10 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { formatDate, formatRM, getCurrentMonth } from '@/lib/utils';
 import { useRole } from '@/lib/role-context';
+import { calcHoursFromTimes, DEFAULT_SCHEDULE, WorkSchedule } from '@/lib/work-schedule';
 
 // ── Types ─────────────────────────────────────────────────────────────
-interface WorkerRow { employee_id: string; full_name: string; work_hours: number; ot_hours: number; }
+interface WorkerRow { employee_id: string; full_name: string; check_in_time: string; check_out_time: string; }
 
 interface AttRecord {
   id: string;
@@ -273,8 +274,8 @@ function CompleteSessionCard({ draftRecs, empList, projList, showAlert, onDone }
 }) {
   const [workerRows,    setWorkerRows]    = useState<WorkerRow[]>([]);
   const [newWorkerRows, setNewWorkerRows] = useState<WorkerRow[]>([]);
-  const [bulkWork,  setBulkWork]  = useState(8);
-  const [bulkOt,    setBulkOt]    = useState(0);
+  const [bulkIn,    setBulkIn]    = useState('08:00');
+  const [bulkOut,   setBulkOut]   = useState('18:00');
   const [addOpen,   setAddOpen]   = useState(false);
   const [addEmpId,  setAddEmpId]  = useState('');
   const [coPhoto,    setCoPhoto]    = useState<string | null>(null);
@@ -282,17 +283,28 @@ function CompleteSessionCard({ draftRecs, empList, projList, showAlert, onDone }
   const [backPhoto,  setBackPhoto]  = useState<string | null>(null);
   const [storePhoto, setStorePhoto] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [schedule, setSchedule] = useState<WorkSchedule>(DEFAULT_SCHEDULE);
 
   const sessionProject      = projList.find(p => p.id === draftRecs[0]?.project_id);
   const sessionCheckInPhoto = draftRecs[0]?.check_in_photo_url || null;
+
+  // Load work schedule from settings once
+  useEffect(() => {
+    fetch('/api/settings/app').then(r => r.json()).then(s => {
+      if (s.work_schedule) {
+        try { setSchedule(JSON.parse(s.work_schedule)); } catch { /* use default */ }
+      }
+    }).catch(() => {});
+  }, []);
 
   const draftKey = draftRecs.map(r => r.id).join(',');
   useEffect(() => {
     if (!draftRecs.length || !empList.length) return;
     setWorkerRows(draftRecs.map(r => ({
-      employee_id: r.employee_id,
-      full_name:   empList.find(e => e.id === r.employee_id)?.full_name || r.employee_id,
-      work_hours: 8, ot_hours: 0,
+      employee_id:    r.employee_id,
+      full_name:      empList.find(e => e.id === r.employee_id)?.full_name || r.employee_id,
+      check_in_time:  schedule.default_start,
+      check_out_time: schedule.work_end,
     })));
     setNewWorkerRows([]); setAddOpen(false); setAddEmpId('');
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -302,18 +314,23 @@ function CompleteSessionCard({ draftRecs, empList, projList, showAlert, onDone }
   const addedIds    = new Set(newWorkerRows.map(r => r.employee_id));
   const addableEmps = empList.filter(e => !draftedIds.has(e.id) && !addedIds.has(e.id));
 
-  function updateRow(idx: number, field: 'work_hours' | 'ot_hours', val: number, isNew = false) {
+  function updateRow(idx: number, field: 'check_in_time' | 'check_out_time', val: string, isNew = false) {
     if (isNew) setNewWorkerRows(rows => rows.map((r, i) => i === idx ? { ...r, [field]: val } : r));
     else       setWorkerRows(rows => rows.map((r, i) => i === idx ? { ...r, [field]: val } : r));
   }
   function applyBulk() {
-    setWorkerRows(rows => rows.map(r => ({ ...r, work_hours: bulkWork, ot_hours: bulkOt })));
-    setNewWorkerRows(rows => rows.map(r => ({ ...r, work_hours: bulkWork, ot_hours: bulkOt })));
+    setWorkerRows(rows => rows.map(r => ({ ...r, check_in_time: bulkIn, check_out_time: bulkOut })));
+    setNewWorkerRows(rows => rows.map(r => ({ ...r, check_in_time: bulkIn, check_out_time: bulkOut })));
   }
   function handleAddWorker() {
     const emp = empList.find(e => e.id === addEmpId);
     if (!emp) return;
-    setNewWorkerRows(prev => [...prev, { employee_id: emp.id, full_name: emp.full_name, work_hours: 8, ot_hours: 0 }]);
+    setNewWorkerRows(prev => [...prev, {
+      employee_id:    emp.id,
+      full_name:      emp.full_name,
+      check_in_time:  schedule.default_start,
+      check_out_time: schedule.work_end,
+    }]);
     setAddEmpId(''); setAddOpen(false);
   }
   async function handleComplete() {
@@ -326,8 +343,8 @@ function CompleteSessionCard({ draftRecs, empList, projList, showAlert, onDone }
         body: JSON.stringify({
           project_id:  draftRecs[0]?.project_id || null,
           work_date:   draftRecs[0]?.work_date || today(),
-          workers:     workerRows.map(r => ({ employee_id: r.employee_id, work_hours: r.work_hours, ot_hours: r.ot_hours })),
-          new_workers: newWorkerRows.map(r => ({ employee_id: r.employee_id, work_hours: r.work_hours, ot_hours: r.ot_hours })),
+          workers:     workerRows.map(r => ({ employee_id: r.employee_id, check_in_time: r.check_in_time, check_out_time: r.check_out_time })),
+          new_workers: newWorkerRows.map(r => ({ employee_id: r.employee_id, check_in_time: r.check_in_time, check_out_time: r.check_out_time })),
           check_out_photo_url:  coPhoto,
           site_photo_front_url: frontPhoto,
           site_photo_back_url:  backPhoto,
@@ -359,67 +376,65 @@ function CompleteSessionCard({ draftRecs, empList, projList, showAlert, onDone }
           </a>
         )}
       </div>
-      {/* Per-worker hours table */}
+
+      {/* Per-worker time table */}
       <div>
-        <p className="form-label mb-2">Hours per Worker</p>
+        <p className="form-label mb-2">Check-In / Check-Out Times</p>
         <div className="border border-gray-200 rounded-lg overflow-hidden">
-          <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 border-b border-gray-200 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-            <span className="flex-1">Worker</span>
-            <span className="w-16 text-center">Work</span>
-            <span className="w-16 text-center">OT</span>
+          <div className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-2 px-3 py-2 bg-gray-50 border-b border-gray-200 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+            <span>Worker</span>
+            <span className="w-20 text-center">In</span>
+            <span className="w-20 text-center">Out</span>
             <span className="w-12 text-right">工</span>
           </div>
           {workerRows.map((w, i) => {
-            const gong = ((w.work_hours + w.ot_hours) / 8).toFixed(2);
+            const { days_worked } = calcHoursFromTimes(w.check_in_time, w.check_out_time, schedule);
             return (
-              <div key={w.employee_id} className="flex items-center gap-2 px-3 py-2.5 border-b border-gray-100 last:border-0">
-                <span className="flex-1 text-sm text-gray-800 truncate">{w.full_name}</span>
-                <select value={w.work_hours} onChange={e => updateRow(i, 'work_hours', Number(e.target.value))}
-                  className="w-16 text-sm border border-gray-200 rounded px-1 py-1 bg-white text-center">
-                  {[0,1,2,3,4,5,6,7,8].map(h => <option key={h} value={h}>{h}h</option>)}
-                </select>
-                <select value={w.ot_hours} onChange={e => updateRow(i, 'ot_hours', Number(e.target.value))}
-                  className="w-16 text-sm border border-gray-200 rounded px-1 py-1 bg-white text-center">
-                  {[0,1,2,3,4,5,6,7,8].map(h => <option key={h} value={h}>+{h}h</option>)}
-                </select>
-                <span className="w-12 text-right text-xs font-semibold text-primary">{gong}</span>
+              <div key={w.employee_id} className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-2 px-3 py-2.5 border-b border-gray-100 last:border-0">
+                <span className="text-sm text-gray-800 truncate">{w.full_name}</span>
+                <input type="time" value={w.check_in_time}
+                  onChange={e => updateRow(i, 'check_in_time', e.target.value)}
+                  className="w-20 text-sm border border-gray-200 rounded px-1 py-1 bg-white" />
+                <input type="time" value={w.check_out_time}
+                  onChange={e => updateRow(i, 'check_out_time', e.target.value)}
+                  className="w-20 text-sm border border-gray-200 rounded px-1 py-1 bg-white" />
+                <span className="w-12 text-right text-xs font-semibold text-primary">{days_worked.toFixed(2)}</span>
               </div>
             );
           })}
           {newWorkerRows.map((w, i) => {
-            const gong = ((w.work_hours + w.ot_hours) / 8).toFixed(2);
+            const { days_worked } = calcHoursFromTimes(w.check_in_time, w.check_out_time, schedule);
             return (
-              <div key={w.employee_id} className="flex items-center gap-2 px-3 py-2.5 border-b border-gray-100 bg-blue-50">
-                <span className="flex-1 text-sm text-blue-800 truncate">
-                  {w.full_name} <span className="text-xs text-blue-400">(late join)</span>
+              <div key={w.employee_id} className="grid grid-cols-[1fr_auto_auto_auto_auto] items-center gap-2 px-3 py-2.5 border-b border-gray-100 bg-blue-50">
+                <span className="text-sm text-blue-800 truncate">
+                  {w.full_name} <span className="text-xs text-blue-400">(late)</span>
                 </span>
-                <select value={w.work_hours} onChange={e => updateRow(i, 'work_hours', Number(e.target.value), true)}
-                  className="w-16 text-sm border border-blue-200 rounded px-1 py-1 bg-white text-center">
-                  {[0,1,2,3,4,5,6,7,8].map(h => <option key={h} value={h}>{h}h</option>)}
-                </select>
-                <select value={w.ot_hours} onChange={e => updateRow(i, 'ot_hours', Number(e.target.value), true)}
-                  className="w-16 text-sm border border-blue-200 rounded px-1 py-1 bg-white text-center">
-                  {[0,1,2,3,4,5,6,7,8].map(h => <option key={h} value={h}>+{h}h</option>)}
-                </select>
-                <span className="w-12 text-right text-xs font-semibold text-blue-600">{gong}</span>
+                <input type="time" value={w.check_in_time}
+                  onChange={e => updateRow(i, 'check_in_time', e.target.value, true)}
+                  className="w-20 text-sm border border-blue-200 rounded px-1 py-1 bg-white" />
+                <input type="time" value={w.check_out_time}
+                  onChange={e => updateRow(i, 'check_out_time', e.target.value, true)}
+                  className="w-20 text-sm border border-blue-200 rounded px-1 py-1 bg-white" />
+                <span className="w-12 text-right text-xs font-semibold text-blue-600">{days_worked.toFixed(2)}</span>
                 <button onClick={() => setNewWorkerRows(rows => rows.filter((_, idx) => idx !== i))}
-                  className="text-red-400 hover:text-red-600 text-sm ml-1">✕</button>
+                  className="text-red-400 hover:text-red-600 text-sm">✕</button>
               </div>
             );
           })}
         </div>
+
+        {/* Set all times */}
         <div className="flex items-center gap-2 mt-2 flex-wrap">
           <span className="text-xs text-gray-500 shrink-0">Set all:</span>
-          <select value={bulkWork} onChange={e => setBulkWork(Number(e.target.value))}
-            className="text-sm border border-gray-200 rounded px-1.5 py-1 bg-white w-16">
-            {[0,1,2,3,4,5,6,7,8].map(h => <option key={h} value={h}>{h}h</option>)}
-          </select>
-          <select value={bulkOt} onChange={e => setBulkOt(Number(e.target.value))}
-            className="text-sm border border-gray-200 rounded px-1.5 py-1 bg-white w-16">
-            {[0,1,2,3,4,5,6,7,8].map(h => <option key={h} value={h}>+{h}h</option>)}
-          </select>
+          <input type="time" value={bulkIn}  onChange={e => setBulkIn(e.target.value)}
+            className="text-sm border border-gray-200 rounded px-1.5 py-1 bg-white w-24" />
+          <span className="text-xs text-gray-400">→</span>
+          <input type="time" value={bulkOut} onChange={e => setBulkOut(e.target.value)}
+            className="text-sm border border-gray-200 rounded px-1.5 py-1 bg-white w-24" />
           <button onClick={applyBulk} className="btn btn-sm btn-outline text-xs px-3">Apply to all</button>
         </div>
+
+        {/* Add late worker */}
         <div className="mt-2">
           {addOpen ? (
             <div className="flex items-center gap-2 mt-1">
@@ -439,6 +454,7 @@ function CompleteSessionCard({ draftRecs, empList, projList, showAlert, onDone }
           )}
         </div>
       </div>
+
       <div>
         <p className="form-label mb-3">Group Photos</p>
         <div className="flex gap-6 flex-wrap">

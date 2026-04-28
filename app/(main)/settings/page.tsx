@@ -56,7 +56,7 @@ export default function SettingsPage() {
       </div>
 
       {tab === 'staff'  && <RatesTab />}
-      {tab === 'record' && <ProjectsTab />}
+      {tab === 'record' && <><WorkScheduleSection /><ProjectsTab /></>}
       {tab === 'salary' && <SalaryTab />}
       {tab === 'saving' && <SavingTab />}
     </div>
@@ -167,6 +167,126 @@ function RatesTab() {
       <div className="mt-4 rounded-lg bg-blue-50 border border-blue-200 px-4 py-3 text-sm text-blue-700">
         💡 Rate changes only affect <strong>future salary calculations</strong>. Finalized records are not changed.
       </div>
+    </div>
+  );
+}
+
+// ── Record Tab — Working Hours Schedule ───────────────────────────────
+function WorkScheduleSection() {
+  const [schedule, setSchedule] = useState<{ sections: {start:string;end:string}[]; work_end: string; default_start: string } | null>(null);
+  const [editing,  setEditing]  = useState(false);
+  const [draft,    setDraft]    = useState<typeof schedule>(null);
+  const [saving,   setSaving]   = useState(false);
+  const [alertMsg, setAlertMsg] = useState('');
+  const [alertType, setAlertType] = useState<'success'|'danger'>('success');
+
+  function showAlert(msg: string, type: 'success'|'danger' = 'success') {
+    setAlertMsg(msg); setAlertType(type); setTimeout(() => setAlertMsg(''), 4000);
+  }
+
+  useEffect(() => {
+    fetch('/api/settings/app').then(r => r.json()).then(s => {
+      if (s.work_schedule) {
+        try {
+          const parsed = JSON.parse(s.work_schedule);
+          setSchedule(parsed); setDraft(JSON.parse(JSON.stringify(parsed)));
+        } catch { /* ignore */ }
+      }
+    });
+  }, []);
+
+  function startEdit() { setDraft(JSON.parse(JSON.stringify(schedule))); setEditing(true); }
+  function cancelEdit() { setDraft(JSON.parse(JSON.stringify(schedule))); setEditing(false); }
+
+  function updateSection(idx: number, field: 'start'|'end', val: string) {
+    if (!draft) return;
+    setDraft(d => ({
+      ...d!,
+      sections: d!.sections.map((s, i) => i === idx ? { ...s, [field]: val } : s),
+    }));
+  }
+
+  async function save() {
+    if (!draft) return;
+    setSaving(true);
+    try {
+      const res = await fetch('/api/settings/app', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ work_schedule: JSON.stringify(draft) }),
+      });
+      if (!res.ok) { showAlert('Failed to save.', 'danger'); return; }
+      setSchedule(draft);
+      setEditing(false);
+      showAlert('Work schedule saved!');
+    } finally { setSaving(false); }
+  }
+
+  if (!schedule) return <div className="py-4 text-sm text-gray-400">Loading…</div>;
+
+  const BREAK_LABELS = ['Tea Break', 'Lunch Break', 'Tea Break'];
+  const sections = editing ? draft!.sections : schedule.sections;
+
+  return (
+    <div className="mb-8">
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <h2 className="font-semibold text-gray-800">Working Hours Schedule</h2>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Used to auto-calculate Gong 工 from check-in/out times. Breaks are excluded from productive time.
+          </p>
+        </div>
+        {!editing && <button className="btn btn-primary btn-sm" onClick={startEdit}>✏️ Edit</button>}
+      </div>
+
+      {alertMsg && <div className={`alert alert-${alertType} mb-3`}>{alertMsg}</div>}
+
+      <div className="card p-0 overflow-hidden">
+        {sections.map((s, i) => (
+          <div key={i}>
+            <div className={`flex items-center gap-3 px-4 py-3 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
+              <span className="w-20 text-xs font-semibold text-gray-500 uppercase">Section {i + 1}</span>
+              {editing ? (
+                <>
+                  <input type="time" value={draft!.sections[i].start}
+                    onChange={e => updateSection(i, 'start', e.target.value)}
+                    className="form-control w-28 text-sm" />
+                  <span className="text-gray-400 text-sm">→</span>
+                  <input type="time" value={draft!.sections[i].end}
+                    onChange={e => updateSection(i, 'end', e.target.value)}
+                    className="form-control w-28 text-sm" />
+                </>
+              ) : (
+                <span className="text-sm text-gray-700 font-medium">
+                  {s.start} → {s.end}
+                  <span className="ml-2 text-xs text-gray-400">(2h)</span>
+                </span>
+              )}
+            </div>
+            {i < sections.length - 1 && (
+              <div className="flex items-center gap-3 px-4 py-2 bg-amber-50 border-y border-amber-100">
+                <span className="w-20 text-xs font-medium text-amber-600">{BREAK_LABELS[i] || 'Break'}</span>
+                <span className="text-xs text-amber-500">{sections[i].end} → {sections[i + 1].start}</span>
+              </div>
+            )}
+          </div>
+        ))}
+        <div className="px-4 py-3 border-t border-gray-100 flex items-center gap-3 bg-primary/5">
+          <span className="w-20 text-xs font-semibold text-primary uppercase">Total</span>
+          <span className="text-sm font-semibold text-primary">
+            {editing ? draft!.sections[0].start : schedule.default_start} → {editing ? draft!.sections[sections.length-1].end : schedule.work_end}
+            <span className="ml-2 text-xs text-gray-400">(8h productive = 1 工)</span>
+          </span>
+        </div>
+      </div>
+
+      {editing && (
+        <div className="flex gap-3 mt-3">
+          <button className="btn btn-primary" onClick={save} disabled={saving}>
+            {saving ? 'Saving…' : '✓ Save Schedule'}
+          </button>
+          <button className="btn btn-secondary" onClick={cancelEdit}>Cancel</button>
+        </div>
+      )}
     </div>
   );
 }
