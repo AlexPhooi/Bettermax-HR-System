@@ -239,7 +239,7 @@ function AdminDashboard() {
                     return (
                       <tr key={e.id} className="table-tr">
                         <td className="table-td">{e.full_name}</td>
-                        <td className={`table-td ${p.cls}`}>{p.label}</td>
+                        <td className={`table-td ${p?.cls ?? ''}`}>{p?.label ?? '—'}</td>
                       </tr>
                     );
                   })}
