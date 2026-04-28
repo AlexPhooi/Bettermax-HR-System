@@ -15,6 +15,8 @@ interface AttRecord {
   hours_worked: number;
   days_worked: number;
   ot_hours: number;
+  check_in_time:  string | null;
+  check_out_time: string | null;
   notes: string | null;
   is_rework: boolean;
   status: string;
@@ -29,6 +31,17 @@ interface AttRecord {
   photo_url: string | null;
   employees: { full_name: string; daily_rate: number } | null;
   projects:  { name: string; code: string | null } | null;
+}
+
+interface EditEntry {
+  id: string;
+  attendance_id: string;
+  edited_at: string;
+  old_check_in_time:  string | null;
+  new_check_in_time:  string | null;
+  old_check_out_time: string | null;
+  new_check_out_time: string | null;
+  users: { username: string } | null;
 }
 
 interface AttGroup {
@@ -780,8 +793,18 @@ function AdminView() {
   const [approving, setApproving] = useState<string | null>(null);
   const [expanded,  setExpanded] = useState<Set<string>>(new Set());
 
-  // Per-group edit state: groupKey → { workHours, otHours, siteClean }
-  const [groupEdits, setGroupEdits] = useState<Record<string, { workHours: number; otHours: number; siteClean: boolean }>>({});
+  // Per-group site-clean toggle (keyed by group key)
+  const [siteCleanEdits, setSiteCleanEdits] = useState<Record<string, boolean>>({});
+  // Per-record time edits (keyed by record id)
+  const [recEdits, setRecEdits] = useState<Record<string, { check_in_time: string; check_out_time: string }>>({});
+  // Records currently being saved
+  const [savingRecs, setSavingRecs] = useState<Set<string>>(new Set());
+  // Edit history per group key
+  const [editHistory, setEditHistory] = useState<Record<string, EditEntry[]>>({});
+  const [historyLoading, setHistoryLoading] = useState<Set<string>>(new Set());
+  const [showHistory, setShowHistory] = useState<Set<string>>(new Set());
+  // Schedule for real-time gong calc
+  const [adminSchedule, setAdminSchedule] = useState<WorkSchedule>(DEFAULT_SCHEDULE);
 
   // Add Attendance modal
   const [showAddModal, setShowAddModal]   = useState(false);
@@ -882,33 +905,107 @@ function AdminView() {
     return Object.values(g).sort((a, b) => b.work_date.localeCompare(a.work_date));
   }, [records, advanceMap]);
 
-  // Init group edits for pending groups
+  // Load work schedule for real-time gong display
   useEffect(() => {
-    const init: typeof groupEdits = {};
+    fetch('/api/settings/app').then(r => r.json()).then(s => {
+      if (s.work_schedule) try { setAdminSchedule(JSON.parse(s.work_schedule)); } catch { /* use default */ }
+    }).catch(() => {});
+  }, []);
+
+  // Init site-clean edits for all visible groups
+  useEffect(() => {
+    const init: Record<string, boolean> = {};
     for (const grp of groups) {
-      if (grp.status === 'pending' && !groupEdits[grp.key]) {
-        const r = grp.records[0];
-        const ot = Math.round(Number(r.ot_hours));
-        const wk = Math.max(1, Math.min(8, Math.round(Number(r.hours_worked) - ot)));
-        init[grp.key] = { workHours: wk, otHours: ot, siteClean: r.site_clean };
+      if (!Object.prototype.hasOwnProperty.call(siteCleanEdits, grp.key)) {
+        init[grp.key] = grp.records[0]?.site_clean ?? false;
       }
     }
-    if (Object.keys(init).length) setGroupEdits(prev => ({ ...prev, ...init }));
+    if (Object.keys(init).length) setSiteCleanEdits(prev => ({ ...prev, ...init }));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groups]);
 
   function toggleExpand(key: string) {
-    setExpanded(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
+    setExpanded(prev => {
+      const n = new Set(prev);
+      if (n.has(key)) {
+        n.delete(key);
+      } else {
+        n.add(key);
+        // Init per-record time edits for this group
+        const grp = groups.find(g => g.key === key);
+        if (grp) {
+          setRecEdits(re => {
+            const next = { ...re };
+            for (const rec of grp.records) {
+              if (!next[rec.id]) {
+                next[rec.id] = {
+                  check_in_time:  rec.check_in_time  || adminSchedule.default_start,
+                  check_out_time: rec.check_out_time || adminSchedule.work_end,
+                };
+              }
+            }
+            return next;
+          });
+        }
+      }
+      return n;
+    });
+  }
+
+  async function loadHistory(grp: AttGroup) {
+    const key = grp.key;
+    setHistoryLoading(prev => new Set(prev).add(key));
+    const ids = grp.records.map(r => r.id).join(',');
+    try {
+      const res = await fetch(`/api/attendance/history?ids=${ids}`);
+      const data = await res.json();
+      setEditHistory(prev => ({ ...prev, [key]: Array.isArray(data) ? data : [] }));
+    } finally {
+      setHistoryLoading(prev => { const n = new Set(prev); n.delete(key); return n; });
+    }
+  }
+
+  function toggleHistory(grp: AttGroup) {
+    const key = grp.key;
+    setShowHistory(prev => {
+      const n = new Set(prev);
+      if (n.has(key)) { n.delete(key); }
+      else {
+        n.add(key);
+        if (!editHistory[key]) loadHistory(grp);
+      }
+      return n;
+    });
+  }
+
+  async function saveRecordTimes(rec: AttRecord) {
+    const edit = recEdits[rec.id];
+    if (!edit) return;
+    setSavingRecs(prev => new Set(prev).add(rec.id));
+    try {
+      const res = await fetch(`/api/attendance/${rec.id}/edit-time`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ check_in_time: edit.check_in_time, check_out_time: edit.check_out_time }),
+      });
+      if (!res.ok) { const d = await res.json(); showAlert(d.error || 'Save failed.', 'danger'); return; }
+      showAlert(`⏱ Times updated for ${rec.employees?.full_name || 'worker'}.`);
+      // Invalidate history cache for this group so it reloads
+      const grpKey = `${rec.work_date}__${rec.project_id || 'none'}`;
+      setEditHistory(prev => { const n = { ...prev }; delete n[grpKey]; return n; });
+      loadData();
+    } finally {
+      setSavingRecs(prev => { const n = new Set(prev); n.delete(rec.id); return n; });
+    }
   }
 
   async function approveGroup(grp: AttGroup, status: 'approved' | 'rejected') {
-    const ids   = grp.records.map(r => r.id);
-    const edits = groupEdits[grp.key] || { workHours: 8, otHours: 0, siteClean: false };
+    const ids       = grp.records.map(r => r.id);
+    const siteClean = siteCleanEdits[grp.key] ?? false;
     setApproving(grp.key + status);
     try {
       const res = await fetch('/api/attendance/group', {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids, status, site_clean: edits.siteClean, work_hours: edits.workHours, ot_hours: edits.otHours }),
+        body: JSON.stringify({ ids, status, site_clean: siteClean }),
       });
       if (!res.ok) { const d = await res.json(); showAlert(d.error, 'danger'); return; }
       showAlert(status === 'approved'
@@ -1129,8 +1226,10 @@ function AdminView() {
               <tbody>
                 {groups.map(grp => {
                   const isOpen = expanded.has(grp.key);
-                  const edits  = groupEdits[grp.key] || { workHours: 8, otHours: 0, siteClean: false };
                   const isPending = grp.status === 'pending';
+
+                  const siteClean = siteCleanEdits[grp.key] ?? false;
+                  const eligibleCount = grp.records.filter(r => Number(r.hours_worked) >= 8).length;
 
                   return [
                     /* ── Summary row ── */
@@ -1185,84 +1284,59 @@ function AdminView() {
                               </div>
                             </div>
 
-                            {/* Pending approval controls */}
-                            {isPending && (
-                              <div className="rounded-xl border border-yellow-200 bg-yellow-50 p-4 space-y-4">
-                                <p className="text-sm font-semibold text-yellow-800">🟡 Awaiting Approval</p>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                  {/* Hours adjustment */}
-                                  <div className="space-y-2">
-                                    <p className="text-xs text-gray-500 font-medium uppercase">Adjust Hours</p>
-                                    <div className="flex items-center gap-2">
-                                      <div>
-                                        <label className="form-label text-xs">Work</label>
-                                        <select className="form-control w-24"
-                                          value={edits.workHours}
-                                          onChange={e => setGroupEdits(g => ({ ...g, [grp.key]: { ...edits, workHours: Number(e.target.value) } }))}>
-                                          {[1,2,3,4,5,6,7,8].map(h => <option key={h} value={h}>{h}h</option>)}
-                                        </select>
-                                      </div>
-                                      <div>
-                                        <label className="form-label text-xs">OT</label>
-                                        <select className="form-control w-24"
-                                          value={edits.otHours}
-                                          onChange={e => setGroupEdits(g => ({ ...g, [grp.key]: { ...edits, otHours: Number(e.target.value) } }))}>
-                                          {[0,1,2,3,4,5,6,7,8].map(h => <option key={h} value={h}>+{h}h</option>)}
-                                        </select>
-                                      </div>
-                                      <div className="pt-5 font-bold text-primary text-lg">
-                                        {((edits.workHours + edits.otHours) / 8).toFixed(2)} 工
-                                      </div>
-                                    </div>
-                                  </div>
-                                  {/* Site bonus */}
+                            {/* Approval / site-bonus panel — pending AND approved (editable) */}
+                            {(isPending || grp.status === 'approved') && (
+                              <div className={`rounded-xl border p-4 space-y-3 ${isPending ? 'border-yellow-200 bg-yellow-50' : 'border-green-200 bg-green-50'}`}>
+                                <div className="flex items-center justify-between flex-wrap gap-2">
+                                  <p className="text-sm font-semibold">{isPending ? '🟡 Awaiting Approval' : '✅ Approved — edit times below if needed'}</p>
+                                </div>
+                                {/* Site bonus */}
+                                <label className={`flex items-start gap-3 cursor-pointer rounded-lg border p-3 transition-colors ${siteClean ? 'bg-green-100 border-green-300' : 'bg-white border-gray-200'}`}>
+                                  <input type="checkbox" className="mt-0.5 w-4 h-4 accent-green-600"
+                                    checked={siteClean}
+                                    onChange={e => setSiteCleanEdits(g => ({ ...g, [grp.key]: e.target.checked }))} />
                                   <div>
-                                    <p className="text-xs text-gray-500 font-medium uppercase mb-2">Site Bonus</p>
-                                    <label className={`flex items-start gap-3 cursor-pointer rounded-lg border p-3 transition-colors ${edits.siteClean ? 'bg-green-50 border-green-300' : 'bg-white border-gray-200'}`}>
-                                      <input type="checkbox" className="mt-0.5 w-4 h-4 accent-green-600"
-                                        checked={edits.siteClean}
-                                        onChange={e => setGroupEdits(g => ({ ...g, [grp.key]: { ...edits, siteClean: e.target.checked } }))} />
-                                      <div>
-                                        <p className="text-sm font-medium text-gray-800">🧹 Site was clean</p>
-                                        <p className="text-xs text-gray-500">+RM10 per worker ≥8h</p>
-                                        {edits.siteClean && (
-                                          <p className="text-xs text-green-700 font-semibold mt-0.5">
-                                            +RM10 × {grp.records.filter(() => (edits.workHours + edits.otHours) >= 8).length} workers = +RM{(grp.records.filter(() => (edits.workHours + edits.otHours) >= 8).length * 10).toFixed(2)}
-                                          </p>
-                                        )}
-                                      </div>
-                                    </label>
+                                    <p className="text-sm font-medium text-gray-800">🧹 Site was clean</p>
+                                    <p className="text-xs text-gray-500">+RM10 per worker ≥8h</p>
+                                    {siteClean && eligibleCount > 0 && (
+                                      <p className="text-xs text-green-700 font-semibold mt-0.5">
+                                        +RM10 × {eligibleCount} worker{eligibleCount !== 1 ? 's' : ''} = +RM{(eligibleCount * 10).toFixed(2)}
+                                      </p>
+                                    )}
                                   </div>
-                                </div>
-                                <div className="flex gap-3">
-                                  <button
-                                    className="btn bg-green-500 hover:bg-green-600 text-white flex-1"
-                                    disabled={approving !== null}
-                                    onClick={() => approveGroup(grp, 'approved')}>
-                                    {approving === grp.key + 'approved' ? '…' : `✓ Approve ${grp.workerCount} Records`}
-                                  </button>
-                                  <button
-                                    className="btn btn-danger"
-                                    disabled={approving !== null}
-                                    onClick={() => approveGroup(grp, 'rejected')}>
-                                    {approving === grp.key + 'rejected' ? '…' : '✗ Reject'}
-                                  </button>
-                                </div>
+                                </label>
+                                {isPending && (
+                                  <div className="flex gap-3">
+                                    <button
+                                      className="btn bg-green-500 hover:bg-green-600 text-white flex-1"
+                                      disabled={approving !== null}
+                                      onClick={() => approveGroup(grp, 'approved')}>
+                                      {approving === grp.key + 'approved' ? '…' : `✓ Approve ${grp.workerCount} Records`}
+                                    </button>
+                                    <button
+                                      className="btn btn-danger"
+                                      disabled={approving !== null}
+                                      onClick={() => approveGroup(grp, 'rejected')}>
+                                      {approving === grp.key + 'rejected' ? '…' : '✗ Reject'}
+                                    </button>
+                                  </div>
+                                )}
                               </div>
                             )}
 
-                            {/* Individual workers table */}
+                            {/* Individual workers table with editable times */}
                             <div>
                               <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">
                                 Workers ({grp.workerCount})
                               </p>
-                              <div className="rounded-lg border border-gray-200 overflow-hidden">
+                              <div className="rounded-lg border border-gray-200 overflow-x-auto">
                                 <table className="w-full text-sm">
                                   <thead>
                                     <tr className="bg-gray-100">
                                       <th className="table-th text-xs">Name</th>
+                                      <th className="table-th text-xs text-center">In</th>
+                                      <th className="table-th text-xs text-center">Out</th>
                                       <th className="table-th text-xs text-right">Gong 工</th>
-                                      <th className="table-th text-xs text-right">OT</th>
                                       <th className="table-th text-xs text-right">Salary</th>
                                       <th className="table-th text-xs text-right">Site Bonus</th>
                                       <th className="table-th text-xs text-right">Advance</th>
@@ -1272,13 +1346,31 @@ function AdminView() {
                                   </thead>
                                   <tbody>
                                     {grp.records.map(rec => {
-                                      const adv = advanceMap[`${rec.employee_id}_${rec.work_date}`] || 0;
-                                      const sal = Number(rec.days_worked) * Number(rec.employees?.daily_rate || 0);
+                                      const adv    = advanceMap[`${rec.employee_id}_${rec.work_date}`] || 0;
+                                      const edit   = recEdits[rec.id];
+                                      // Real-time gong from edits if available, else from DB
+                                      const liveGong = edit
+                                        ? calcHoursFromTimes(edit.check_in_time, edit.check_out_time, adminSchedule).days_worked
+                                        : Number(rec.days_worked);
+                                      const sal    = liveGong * Number(rec.employees?.daily_rate || 0);
+                                      const isDirty = edit && (edit.check_in_time !== (rec.check_in_time || adminSchedule.default_start) || edit.check_out_time !== (rec.check_out_time || adminSchedule.work_end));
+                                      const isSavingThis = savingRecs.has(rec.id);
                                       return (
-                                        <tr key={rec.id} className="border-t border-gray-100 hover:bg-white transition-colors">
+                                        <tr key={rec.id} className={`border-t border-gray-100 hover:bg-white transition-colors ${isDirty ? 'bg-blue-50/40' : ''}`}>
                                           <td className="table-td font-medium">{rec.employees?.full_name || '—'}</td>
-                                          <td className="table-td text-right font-semibold">{Number(rec.days_worked).toFixed(2)} 工</td>
-                                          <td className="table-td text-right text-gray-500">{Number(rec.ot_hours) > 0 ? `+${Number(rec.ot_hours)}h` : '—'}</td>
+                                          <td className="table-td">
+                                            <input type="time"
+                                              value={edit?.check_in_time  || rec.check_in_time  || adminSchedule.default_start}
+                                              onChange={e => setRecEdits(r => ({ ...r, [rec.id]: { ...r[rec.id] || { check_in_time: adminSchedule.default_start, check_out_time: adminSchedule.work_end }, check_in_time: e.target.value } }))}
+                                              className="text-xs border border-gray-200 rounded px-1 py-0.5 w-24 bg-white" />
+                                          </td>
+                                          <td className="table-td">
+                                            <input type="time"
+                                              value={edit?.check_out_time || rec.check_out_time || adminSchedule.work_end}
+                                              onChange={e => setRecEdits(r => ({ ...r, [rec.id]: { ...r[rec.id] || { check_in_time: adminSchedule.default_start, check_out_time: adminSchedule.work_end }, check_out_time: e.target.value } }))}
+                                              className="text-xs border border-gray-200 rounded px-1 py-0.5 w-24 bg-white" />
+                                          </td>
+                                          <td className="table-td text-right font-semibold text-primary">{liveGong.toFixed(2)} 工</td>
                                           <td className="table-td text-right text-accent font-medium">{formatRM(sal)}</td>
                                           <td className="table-td text-right">
                                             {Number(rec.site_bonus) > 0
@@ -1292,18 +1384,26 @@ function AdminView() {
                                           </td>
                                           <td className="table-td"><StatusBadge status={rec.status} /></td>
                                           <td className="table-td">
-                                            <button className="btn btn-danger btn-sm text-xs" onClick={() => deleteRecord(rec.id)}>Del</button>
+                                            <div className="flex gap-1">
+                                              {isDirty && (
+                                                <button
+                                                  className="btn btn-sm text-xs bg-blue-500 hover:bg-blue-600 text-white"
+                                                  disabled={isSavingThis}
+                                                  onClick={() => saveRecordTimes(rec)}>
+                                                  {isSavingThis ? '…' : '💾'}
+                                                </button>
+                                              )}
+                                              <button className="btn btn-danger btn-sm text-xs" onClick={() => deleteRecord(rec.id)}>Del</button>
+                                            </div>
                                           </td>
                                         </tr>
                                       );
                                     })}
                                   </tbody>
-                                  {/* Group totals row */}
                                   <tfoot>
                                     <tr className="bg-gray-100 border-t-2 border-gray-200 font-semibold">
-                                      <td className="table-td text-gray-600">Total</td>
+                                      <td className="table-td text-gray-600" colSpan={3}>Total</td>
                                       <td className="table-td text-right text-primary">{grp.totalGong.toFixed(2)} 工</td>
-                                      <td className="table-td"></td>
                                       <td className="table-td text-right text-accent">{formatRM(grp.totalSalary)}</td>
                                       <td className="table-td text-right text-green-700">{grp.totalSiteBonus > 0 ? `+${formatRM(grp.totalSiteBonus)}` : '—'}</td>
                                       <td className="table-td text-right text-red-600">{grp.totalAdvance > 0 ? `-${formatRM(grp.totalAdvance)}` : '—'}</td>
@@ -1312,6 +1412,57 @@ function AdminView() {
                                   </tfoot>
                                 </table>
                               </div>
+                            </div>
+
+                            {/* Edit history (immutable audit log) */}
+                            <div>
+                              <button
+                                onClick={() => toggleHistory(grp)}
+                                className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 transition-colors">
+                                📋 {historyLoading.has(grp.key) ? 'Loading…' : showHistory.has(grp.key) ? '▲ Hide edit history' : '▼ Edit history'}
+                                {editHistory[grp.key]?.length > 0 && (
+                                  <span className="badge bg-gray-200 text-gray-600 text-[10px]">{editHistory[grp.key].length}</span>
+                                )}
+                              </button>
+                              {showHistory.has(grp.key) && (
+                                <div className="mt-2 rounded border border-gray-200 overflow-hidden">
+                                  {!editHistory[grp.key] || editHistory[grp.key].length === 0 ? (
+                                    <p className="px-4 py-3 text-xs text-gray-400">No time edits recorded for this session.</p>
+                                  ) : (
+                                    <table className="w-full text-xs">
+                                      <thead>
+                                        <tr className="bg-gray-100">
+                                          <th className="table-th text-xs">When</th>
+                                          <th className="table-th text-xs">By</th>
+                                          <th className="table-th text-xs">Worker</th>
+                                          <th className="table-th text-xs text-center">Old In</th>
+                                          <th className="table-th text-xs text-center">New In</th>
+                                          <th className="table-th text-xs text-center">Old Out</th>
+                                          <th className="table-th text-xs text-center">New Out</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {editHistory[grp.key].map(e => {
+                                          const worker = grp.records.find(r => r.id === e.attendance_id);
+                                          return (
+                                            <tr key={e.id} className="border-t border-gray-100">
+                                              <td className="table-td text-gray-500 whitespace-nowrap">
+                                                {new Date(e.edited_at).toLocaleString('en-MY', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' })}
+                                              </td>
+                                              <td className="table-td font-medium">{e.users?.username || '—'}</td>
+                                              <td className="table-td">{worker?.employees?.full_name || '—'}</td>
+                                              <td className="table-td text-center text-gray-400">{e.old_check_in_time  || '—'}</td>
+                                              <td className="table-td text-center text-primary font-medium">{e.new_check_in_time}</td>
+                                              <td className="table-td text-center text-gray-400">{e.old_check_out_time || '—'}</td>
+                                              <td className="table-td text-center text-primary font-medium">{e.new_check_out_time}</td>
+                                            </tr>
+                                          );
+                                        })}
+                                      </tbody>
+                                    </table>
+                                  )}
+                                </div>
+                              )}
                             </div>
 
                           </div>

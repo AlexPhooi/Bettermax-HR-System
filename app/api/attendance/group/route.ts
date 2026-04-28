@@ -12,26 +12,20 @@ export async function PATCH(req: NextRequest) {
   if (!isApprover(user.role)) return NextResponse.json({ error: 'Approver/Admin/Owner only.' }, { status: 403 });
 
   const body = await req.json();
-  const { ids, status, site_clean, work_hours, ot_hours } = body;
+  const { ids, status, site_clean } = body;
 
   if (!Array.isArray(ids) || ids.length === 0)
     return NextResponse.json({ error: 'ids array required.' }, { status: 400 });
   if (!['approved', 'rejected'].includes(status))
     return NextResponse.json({ error: 'status must be approved or rejected.' }, { status: 400 });
 
-  // Build update payload
+  // Hours/days are already set per-worker via the complete or edit-time routes.
+  // Approval only stamps status + site_clean/site_bonus.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const update: Record<string, any> = { status };
 
   if (site_clean !== undefined) {
     update.site_clean = Boolean(site_clean);
-  }
-
-  if (work_hours && Number(work_hours) >= 1) {
-    const total_hours = Number(work_hours) + (Number(ot_hours) || 0);
-    update.hours_worked = total_hours;
-    update.days_worked  = total_hours / 8;
-    update.ot_hours     = Number(ot_hours) || 0;
   }
 
   // Fetch attendance records with project + employee info (including date_of_birth for birthday bonus)
@@ -51,7 +45,7 @@ export async function PATCH(req: NextRequest) {
   const month = new Date().toISOString().slice(0, 7);
 
   for (const rec of records) {
-    const effectiveHours = update.hours_worked ?? Number(rec.hours_worked);
+    const effectiveHours = Number(rec.hours_worked);
 
     // Check if work_date is in employee's birthday month → x2 bonus
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
