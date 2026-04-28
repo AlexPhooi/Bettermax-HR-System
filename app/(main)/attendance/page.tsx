@@ -262,6 +262,206 @@ function WorkerView() {
 }
 
 // ══════════════════════════════════════════════════════════════════════
+// COMPLETE SESSION CARD — one per active draft session (leader can have multiple)
+// ══════════════════════════════════════════════════════════════════════
+function CompleteSessionCard({ draftRecs, empList, projList, showAlert, onDone }: {
+  draftRecs: AttRecord[];
+  empList:   Employee[];
+  projList:  Project[];
+  showAlert: (msg: string, type?: 'success' | 'danger' | 'info') => void;
+  onDone:    () => void;
+}) {
+  const [workerRows,    setWorkerRows]    = useState<WorkerRow[]>([]);
+  const [newWorkerRows, setNewWorkerRows] = useState<WorkerRow[]>([]);
+  const [bulkWork,  setBulkWork]  = useState(8);
+  const [bulkOt,    setBulkOt]    = useState(0);
+  const [addOpen,   setAddOpen]   = useState(false);
+  const [addEmpId,  setAddEmpId]  = useState('');
+  const [coPhoto,    setCoPhoto]    = useState<string | null>(null);
+  const [frontPhoto, setFrontPhoto] = useState<string | null>(null);
+  const [backPhoto,  setBackPhoto]  = useState<string | null>(null);
+  const [storePhoto, setStorePhoto] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const sessionProject      = projList.find(p => p.id === draftRecs[0]?.project_id);
+  const sessionCheckInPhoto = draftRecs[0]?.check_in_photo_url || null;
+
+  const draftKey = draftRecs.map(r => r.id).join(',');
+  useEffect(() => {
+    if (!draftRecs.length || !empList.length) return;
+    setWorkerRows(draftRecs.map(r => ({
+      employee_id: r.employee_id,
+      full_name:   empList.find(e => e.id === r.employee_id)?.full_name || r.employee_id,
+      work_hours: 8, ot_hours: 0,
+    })));
+    setNewWorkerRows([]); setAddOpen(false); setAddEmpId('');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftKey, empList.length]);
+
+  const draftedIds  = new Set(draftRecs.map(r => r.employee_id));
+  const addedIds    = new Set(newWorkerRows.map(r => r.employee_id));
+  const addableEmps = empList.filter(e => !draftedIds.has(e.id) && !addedIds.has(e.id));
+
+  function updateRow(idx: number, field: 'work_hours' | 'ot_hours', val: number, isNew = false) {
+    if (isNew) setNewWorkerRows(rows => rows.map((r, i) => i === idx ? { ...r, [field]: val } : r));
+    else       setWorkerRows(rows => rows.map((r, i) => i === idx ? { ...r, [field]: val } : r));
+  }
+  function applyBulk() {
+    setWorkerRows(rows => rows.map(r => ({ ...r, work_hours: bulkWork, ot_hours: bulkOt })));
+    setNewWorkerRows(rows => rows.map(r => ({ ...r, work_hours: bulkWork, ot_hours: bulkOt })));
+  }
+  function handleAddWorker() {
+    const emp = empList.find(e => e.id === addEmpId);
+    if (!emp) return;
+    setNewWorkerRows(prev => [...prev, { employee_id: emp.id, full_name: emp.full_name, work_hours: 8, ot_hours: 0 }]);
+    setAddEmpId(''); setAddOpen(false);
+  }
+  async function handleComplete() {
+    if (!coPhoto) { showAlert('Check-out group photo is required.', 'danger'); return; }
+    if (!workerRows.length) { showAlert('No workers in session.', 'danger'); return; }
+    setSaving(true);
+    try {
+      const res = await fetch('/api/attendance/complete', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          project_id:  draftRecs[0]?.project_id || null,
+          work_date:   draftRecs[0]?.work_date || today(),
+          workers:     workerRows.map(r => ({ employee_id: r.employee_id, work_hours: r.work_hours, ot_hours: r.ot_hours })),
+          new_workers: newWorkerRows.map(r => ({ employee_id: r.employee_id, work_hours: r.work_hours, ot_hours: r.ot_hours })),
+          check_out_photo_url:  coPhoto,
+          site_photo_front_url: frontPhoto,
+          site_photo_back_url:  backPhoto,
+          site_photo_store_url: storePhoto,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) { showAlert(data.error, 'danger'); return; }
+      showAlert(`Submitted ${data.updated} record${data.updated !== 1 ? 's' : ''} for approval ✅`);
+      onDone();
+    } finally { setSaving(false); }
+  }
+
+  return (
+    <div className="card space-y-5 border-l-4 border-primary">
+      <div className="flex items-start justify-between">
+        <div>
+          <h3 className="font-semibold text-gray-800">
+            Complete Attendance{sessionProject ? ` — ${sessionProject.name}` : ''}
+          </h3>
+          <p className="text-sm text-gray-500 mt-0.5">
+            {draftRecs.length} worker{draftRecs.length !== 1 ? 's' : ''} checked in
+          </p>
+        </div>
+        {sessionCheckInPhoto && (
+          <a href={sessionCheckInPhoto} target="_blank" rel="noopener noreferrer">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={sessionCheckInPhoto} alt="check-in" className="w-14 h-14 object-cover rounded-lg border-2 border-green-400 hover:opacity-80" />
+          </a>
+        )}
+      </div>
+      {/* Per-worker hours table */}
+      <div>
+        <p className="form-label mb-2">Hours per Worker</p>
+        <div className="border border-gray-200 rounded-lg overflow-hidden">
+          <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 border-b border-gray-200 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+            <span className="flex-1">Worker</span>
+            <span className="w-16 text-center">Work</span>
+            <span className="w-16 text-center">OT</span>
+            <span className="w-12 text-right">工</span>
+          </div>
+          {workerRows.map((w, i) => {
+            const gong = ((w.work_hours + w.ot_hours) / 8).toFixed(2);
+            return (
+              <div key={w.employee_id} className="flex items-center gap-2 px-3 py-2.5 border-b border-gray-100 last:border-0">
+                <span className="flex-1 text-sm text-gray-800 truncate">{w.full_name}</span>
+                <select value={w.work_hours} onChange={e => updateRow(i, 'work_hours', Number(e.target.value))}
+                  className="w-16 text-sm border border-gray-200 rounded px-1 py-1 bg-white text-center">
+                  {[0,1,2,3,4,5,6,7,8].map(h => <option key={h} value={h}>{h}h</option>)}
+                </select>
+                <select value={w.ot_hours} onChange={e => updateRow(i, 'ot_hours', Number(e.target.value))}
+                  className="w-16 text-sm border border-gray-200 rounded px-1 py-1 bg-white text-center">
+                  {[0,1,2,3,4,5,6,7,8].map(h => <option key={h} value={h}>+{h}h</option>)}
+                </select>
+                <span className="w-12 text-right text-xs font-semibold text-primary">{gong}</span>
+              </div>
+            );
+          })}
+          {newWorkerRows.map((w, i) => {
+            const gong = ((w.work_hours + w.ot_hours) / 8).toFixed(2);
+            return (
+              <div key={w.employee_id} className="flex items-center gap-2 px-3 py-2.5 border-b border-gray-100 bg-blue-50">
+                <span className="flex-1 text-sm text-blue-800 truncate">
+                  {w.full_name} <span className="text-xs text-blue-400">(late join)</span>
+                </span>
+                <select value={w.work_hours} onChange={e => updateRow(i, 'work_hours', Number(e.target.value), true)}
+                  className="w-16 text-sm border border-blue-200 rounded px-1 py-1 bg-white text-center">
+                  {[0,1,2,3,4,5,6,7,8].map(h => <option key={h} value={h}>{h}h</option>)}
+                </select>
+                <select value={w.ot_hours} onChange={e => updateRow(i, 'ot_hours', Number(e.target.value), true)}
+                  className="w-16 text-sm border border-blue-200 rounded px-1 py-1 bg-white text-center">
+                  {[0,1,2,3,4,5,6,7,8].map(h => <option key={h} value={h}>+{h}h</option>)}
+                </select>
+                <span className="w-12 text-right text-xs font-semibold text-blue-600">{gong}</span>
+                <button onClick={() => setNewWorkerRows(rows => rows.filter((_, idx) => idx !== i))}
+                  className="text-red-400 hover:text-red-600 text-sm ml-1">✕</button>
+              </div>
+            );
+          })}
+        </div>
+        <div className="flex items-center gap-2 mt-2 flex-wrap">
+          <span className="text-xs text-gray-500 shrink-0">Set all:</span>
+          <select value={bulkWork} onChange={e => setBulkWork(Number(e.target.value))}
+            className="text-sm border border-gray-200 rounded px-1.5 py-1 bg-white w-16">
+            {[0,1,2,3,4,5,6,7,8].map(h => <option key={h} value={h}>{h}h</option>)}
+          </select>
+          <select value={bulkOt} onChange={e => setBulkOt(Number(e.target.value))}
+            className="text-sm border border-gray-200 rounded px-1.5 py-1 bg-white w-16">
+            {[0,1,2,3,4,5,6,7,8].map(h => <option key={h} value={h}>+{h}h</option>)}
+          </select>
+          <button onClick={applyBulk} className="btn btn-sm btn-outline text-xs px-3">Apply to all</button>
+        </div>
+        <div className="mt-2">
+          {addOpen ? (
+            <div className="flex items-center gap-2 mt-1">
+              <select value={addEmpId} onChange={e => setAddEmpId(e.target.value)}
+                className="flex-1 text-sm border border-gray-200 rounded px-2 py-1.5 bg-white">
+                <option value="">Select worker…</option>
+                {addableEmps.map(e => <option key={e.id} value={e.id}>{e.full_name}</option>)}
+              </select>
+              <button onClick={handleAddWorker} disabled={!addEmpId} className="btn btn-sm btn-primary text-xs px-3">Add</button>
+              <button onClick={() => { setAddOpen(false); setAddEmpId(''); }} className="btn btn-sm btn-outline text-xs">✕</button>
+            </div>
+          ) : (
+            <button onClick={() => setAddOpen(true)}
+              className="text-sm text-primary hover:underline flex items-center gap-1 mt-1">
+              + Add late worker
+            </button>
+          )}
+        </div>
+      </div>
+      <div>
+        <p className="form-label mb-3">Group Photos</p>
+        <div className="flex gap-6 flex-wrap">
+          <PhotoBtn label="Check-Out Photo *" url={coPhoto} onUrl={setCoPhoto} type="check_out_photo" />
+        </div>
+      </div>
+      <div>
+        <p className="form-label mb-3">Site Photos (for bonus review)</p>
+        <div className="flex gap-6 flex-wrap">
+          <PhotoBtn label="Front"  url={frontPhoto} onUrl={setFrontPhoto} type="site_front" photoLabel="front" />
+          <PhotoBtn label="Back"   url={backPhoto}  onUrl={setBackPhoto}  type="site_back"  photoLabel="back"  />
+          <PhotoBtn label="Store"  url={storePhoto} onUrl={setStorePhoto} type="site_store" photoLabel="store" />
+        </div>
+        <p className="text-xs text-gray-400 mt-2">Boss reviews site photos to grant <strong>+RM10</strong> site bonus for workers ≥8h.</p>
+      </div>
+      <button type="button" disabled={saving} onClick={handleComplete} className="btn btn-primary w-full">
+        {saving ? 'Submitting…' : '📤 Submit for Approval'}
+      </button>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════
 // LEADER VIEW — check-in / complete + personal history
 // ══════════════════════════════════════════════════════════════════════
 function LeaderView() {
@@ -286,17 +486,6 @@ function LeaderView() {
   const [autoCount,   setAutoCount]   = useState<number | null>(null);
   const [ciPhoto,    setCiPhoto]    = useState<string | null>(null);
 
-  // Complete form — per-worker hours
-  const [workerRows,    setWorkerRows]    = useState<WorkerRow[]>([]);
-  const [newWorkerRows, setNewWorkerRows] = useState<WorkerRow[]>([]);
-  const [bulkWork,      setBulkWork]      = useState(8);
-  const [bulkOt,        setBulkOt]        = useState(0);
-  const [addOpen,       setAddOpen]       = useState(false);
-  const [addEmpId,      setAddEmpId]      = useState('');
-  const [coPhoto,    setCoPhoto]    = useState<string | null>(null);
-  const [frontPhoto, setFrontPhoto] = useState<string | null>(null);
-  const [backPhoto,  setBackPhoto]  = useState<string | null>(null);
-  const [storePhoto, setStorePhoto] = useState<string | null>(null);
 
   function showAlert(msg: string, type: 'success' | 'danger' | 'info' = 'success') {
     setAlertMsg(msg); setAlertType(type); setTimeout(() => setAlertMsg(''), 5000);
@@ -347,39 +536,35 @@ function LeaderView() {
   const allSelected = filteredEmps.length > 0 && filteredEmps.every(e => checkedIds.has(e.id));
   const activeProjects = projList.filter(p => p.status === 'active');
 
-  const draftRecs    = todayRecs.filter(r => r.status === 'draft');
-  const nonDraftRecs = todayRecs.filter(r => r.status !== 'draft');
-  const hasDraft     = draftRecs.length > 0;
-  const hasSubmitted = nonDraftRecs.length > 0 && !hasDraft;
-  // Dominant status for banner: rejected > pending > approved
-  const todayStatus  = hasSubmitted
-    ? nonDraftRecs.some(r => r.status === 'rejected') ? 'rejected'
-    : nonDraftRecs.some(r => r.status === 'pending')  ? 'pending'
-    : 'approved'
-    : null;
+  // Group today's records by project — one session per project
+  const draftSessions = useMemo(() => {
+    const groups: Record<string, AttRecord[]> = {};
+    for (const r of todayRecs.filter(r => r.status === 'draft')) {
+      const key = r.project_id || 'none';
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(r);
+    }
+    return Object.values(groups);
+  }, [todayRecs]);
 
-  const sessionProject = hasDraft ? projList.find(p => p.id === draftRecs[0].project_id) : null;
-  const sessionCheckInPhoto = hasDraft ? draftRecs[0].check_in_photo_url : null;
+  const submittedSessions = useMemo(() => {
+    const groups: Record<string, AttRecord[]> = {};
+    for (const r of todayRecs.filter(r => r.status !== 'draft')) {
+      const key = r.project_id || 'none';
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(r);
+    }
+    return Object.values(groups).map(recs => ({
+      recs,
+      project: recs[0].projects,
+      dominantStatus: recs.some(r => r.status === 'rejected') ? 'rejected'
+        : recs.some(r => r.status === 'pending') ? 'pending' : 'approved',
+    }));
+  }, [todayRecs]);
 
-  // Initialise per-worker rows whenever the draft set changes
-  const draftKey = draftRecs.map(r => r.id).join(',');
-  useEffect(() => {
-    if (draftRecs.length === 0 || empList.length === 0) return;
-    setWorkerRows(draftRecs.map(r => ({
-      employee_id: r.employee_id,
-      full_name: empList.find(e => e.id === r.employee_id)?.full_name || r.employee_id,
-      work_hours: 8,
-      ot_hours:   0,
-    })));
-    setNewWorkerRows([]);
-    setAddOpen(false);
-    setAddEmpId('');
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draftKey, empList.length]);
-
-  const draftedIds = new Set(draftRecs.map(r => r.employee_id));
-  const addedIds   = new Set(newWorkerRows.map(r => r.employee_id));
-  const addableEmps = empList.filter(e => !draftedIds.has(e.id) && !addedIds.has(e.id));
+  // Filter check-in project list to exclude projects that already have an active draft
+  const draftedProjectIds = new Set(draftSessions.map(s => s[0]?.project_id));
+  const availableProjects = activeProjects.filter(p => !draftedProjectIds.has(p.id));
 
   async function handleCheckIn() {
     if (checkedIds.size === 0) { showAlert('Select at least one worker.', 'danger'); return; }
@@ -399,50 +584,6 @@ function LeaderView() {
     } finally { setSaving(false); }
   }
 
-  function handleAddWorker() {
-    const emp = empList.find(e => e.id === addEmpId);
-    if (!emp) return;
-    setNewWorkerRows(prev => [...prev, { employee_id: emp.id, full_name: emp.full_name, work_hours: 8, ot_hours: 0 }]);
-    setAddEmpId('');
-    setAddOpen(false);
-  }
-
-  function updateRow(idx: number, field: 'work_hours' | 'ot_hours', val: number, isNew = false) {
-    if (isNew) setNewWorkerRows(rows => rows.map((r, i) => i === idx ? { ...r, [field]: val } : r));
-    else       setWorkerRows(rows => rows.map((r, i) => i === idx ? { ...r, [field]: val } : r));
-  }
-
-  function applyBulk() {
-    setWorkerRows(rows => rows.map(r => ({ ...r, work_hours: bulkWork, ot_hours: bulkOt })));
-    setNewWorkerRows(rows => rows.map(r => ({ ...r, work_hours: bulkWork, ot_hours: bulkOt })));
-  }
-
-  async function handleComplete() {
-    if (!coPhoto) { showAlert('Check-out group photo is required.', 'danger'); return; }
-    if (workerRows.length === 0) { showAlert('No workers in session.', 'danger'); return; }
-    setSaving(true);
-    try {
-      const res = await fetch('/api/attendance/complete', {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          project_id:  draftRecs[0]?.project_id || null,
-          work_date:   draftRecs[0]?.work_date || today(),
-          workers:     workerRows.map(r => ({ employee_id: r.employee_id, work_hours: r.work_hours, ot_hours: r.ot_hours })),
-          new_workers: newWorkerRows.map(r => ({ employee_id: r.employee_id, work_hours: r.work_hours, ot_hours: r.ot_hours })),
-          check_out_photo_url:  coPhoto,
-          site_photo_front_url: frontPhoto,
-          site_photo_back_url:  backPhoto,
-          site_photo_store_url: storePhoto,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) { showAlert(data.error, 'danger'); return; }
-      showAlert(`Submitted ${data.updated} record${data.updated !== 1 ? 's' : ''} for approval ✅`);
-      setCoPhoto(null); setFrontPhoto(null); setBackPhoto(null); setStorePhoto(null);
-      loadAll();
-    } finally { setSaving(false); }
-  }
-
   if (loading) return <div className="p-8 text-center text-gray-400">Loading…</div>;
 
   return (
@@ -456,217 +597,108 @@ function LeaderView() {
           📅 Today — {new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}
         </h2>
 
-        {hasSubmitted && todayStatus === 'approved' && (
-          <div className="card border-l-4 border-green-400 bg-green-50">
-            <div className="flex items-center gap-3">
-              <span className="text-2xl">✅</span>
-              <div>
-                <p className="font-semibold text-green-800">Today&apos;s attendance approved</p>
-                <p className="text-sm text-green-700 mt-0.5">{nonDraftRecs.length} record{nonDraftRecs.length !== 1 ? 's' : ''}</p>
-              </div>
-            </div>
-          </div>
-        )}
-        {hasSubmitted && todayStatus === 'pending' && (
-          <div className="card border-l-4 border-yellow-400 bg-yellow-50">
-            <div className="flex items-center gap-3">
-              <span className="text-2xl">🟡</span>
-              <div>
-                <p className="font-semibold text-yellow-800">Today&apos;s attendance submitted — awaiting approval</p>
-                <p className="text-sm text-yellow-700 mt-0.5">{nonDraftRecs.length} record{nonDraftRecs.length !== 1 ? 's' : ''}</p>
-              </div>
-            </div>
-          </div>
-        )}
-        {hasSubmitted && todayStatus === 'rejected' && (
-          <div className="card border-l-4 border-red-400 bg-red-50">
-            <div className="flex items-center gap-3">
-              <span className="text-2xl">❌</span>
-              <div>
-                <p className="font-semibold text-red-800">Today&apos;s attendance was rejected</p>
-                <p className="text-sm text-red-700 mt-0.5">{nonDraftRecs.length} record{nonDraftRecs.length !== 1 ? 's' : ''} — contact admin</p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {hasDraft && (
-          <div className="card space-y-5">
-            <div className="flex items-start justify-between">
-              <div>
-                <h3 className="font-semibold text-gray-800">Complete Today&apos;s Attendance</h3>
-                <p className="text-sm text-gray-500 mt-0.5">{draftRecs.length} worker{draftRecs.length !== 1 ? 's' : ''} checked in{sessionProject ? ` · ${sessionProject.name}` : ''}</p>
-              </div>
-              {sessionCheckInPhoto && (
-                <a href={sessionCheckInPhoto} target="_blank" rel="noopener noreferrer">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={sessionCheckInPhoto} alt="check-in" className="w-14 h-14 object-cover rounded-lg border-2 border-green-400 hover:opacity-80" />
-                </a>
-              )}
-            </div>
-            {/* ── Per-worker hours table ── */}
-            <div>
-              <p className="form-label mb-2">Hours per Worker</p>
-              <div className="border border-gray-200 rounded-lg overflow-hidden">
-                {/* Header */}
-                <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 border-b border-gray-200 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                  <span className="flex-1">Worker</span>
-                  <span className="w-16 text-center">Work</span>
-                  <span className="w-16 text-center">OT</span>
-                  <span className="w-12 text-right">工</span>
+        {/* Status banners — one per submitted session */}
+        {submittedSessions.map(s => {
+          const key = s.recs[0]?.project_id || 'none';
+          const projectName = s.project?.name || 'No project';
+          return (
+            <div key={key} className={`card border-l-4 mb-3 ${
+              s.dominantStatus === 'approved' ? 'border-green-400 bg-green-50' :
+              s.dominantStatus === 'rejected' ? 'border-red-400 bg-red-50' :
+              'border-yellow-400 bg-yellow-50'
+            }`}>
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">
+                  {s.dominantStatus === 'approved' ? '✅' : s.dominantStatus === 'rejected' ? '❌' : '🟡'}
+                </span>
+                <div>
+                  <p className={`font-semibold ${
+                    s.dominantStatus === 'approved' ? 'text-green-800' :
+                    s.dominantStatus === 'rejected' ? 'text-red-800' : 'text-yellow-800'
+                  }`}>
+                    {projectName} —{' '}
+                    {s.dominantStatus === 'approved' ? 'Approved' :
+                     s.dominantStatus === 'rejected' ? 'Rejected — contact admin' :
+                     'Submitted, awaiting approval'}
+                  </p>
+                  <p className={`text-sm mt-0.5 ${
+                    s.dominantStatus === 'approved' ? 'text-green-700' :
+                    s.dominantStatus === 'rejected' ? 'text-red-700' : 'text-yellow-700'
+                  }`}>{s.recs.length} record{s.recs.length !== 1 ? 's' : ''}</p>
                 </div>
-                {/* Existing (morning check-in) workers */}
-                {workerRows.map((w, i) => {
-                  const gong = ((w.work_hours + w.ot_hours) / 8).toFixed(2);
-                  return (
-                    <div key={w.employee_id} className="flex items-center gap-2 px-3 py-2.5 border-b border-gray-100 last:border-0">
-                      <span className="flex-1 text-sm text-gray-800 truncate">{w.full_name}</span>
-                      <select value={w.work_hours} onChange={e => updateRow(i, 'work_hours', Number(e.target.value))}
-                        className="w-16 text-sm border border-gray-200 rounded px-1 py-1 bg-white text-center">
-                        {[0,1,2,3,4,5,6,7,8].map(h => <option key={h} value={h}>{h}h</option>)}
-                      </select>
-                      <select value={w.ot_hours} onChange={e => updateRow(i, 'ot_hours', Number(e.target.value))}
-                        className="w-16 text-sm border border-gray-200 rounded px-1 py-1 bg-white text-center">
-                        {[0,1,2,3,4,5,6,7,8].map(h => <option key={h} value={h}>+{h}h</option>)}
-                      </select>
-                      <span className="w-12 text-right text-xs font-semibold text-primary">{gong}</span>
-                    </div>
-                  );
-                })}
-                {/* Late-join workers */}
-                {newWorkerRows.map((w, i) => {
-                  const gong = ((w.work_hours + w.ot_hours) / 8).toFixed(2);
-                  return (
-                    <div key={w.employee_id} className="flex items-center gap-2 px-3 py-2.5 border-b border-gray-100 bg-blue-50">
-                      <span className="flex-1 text-sm text-blue-800 truncate">
-                        {w.full_name} <span className="text-xs text-blue-400">(late join)</span>
-                      </span>
-                      <select value={w.work_hours} onChange={e => updateRow(i, 'work_hours', Number(e.target.value), true)}
-                        className="w-16 text-sm border border-blue-200 rounded px-1 py-1 bg-white text-center">
-                        {[0,1,2,3,4,5,6,7,8].map(h => <option key={h} value={h}>{h}h</option>)}
-                      </select>
-                      <select value={w.ot_hours} onChange={e => updateRow(i, 'ot_hours', Number(e.target.value), true)}
-                        className="w-16 text-sm border border-blue-200 rounded px-1 py-1 bg-white text-center">
-                        {[0,1,2,3,4,5,6,7,8].map(h => <option key={h} value={h}>+{h}h</option>)}
-                      </select>
-                      <span className="w-12 text-right text-xs font-semibold text-blue-600">{gong}</span>
-                      <button onClick={() => setNewWorkerRows(rows => rows.filter((_, idx) => idx !== i))}
-                        className="text-red-400 hover:text-red-600 text-sm ml-1">✕</button>
-                    </div>
-                  );
-                })}
               </div>
+            </div>
+          );
+        })}
 
-              {/* Apply to all */}
-              <div className="flex items-center gap-2 mt-2 flex-wrap">
-                <span className="text-xs text-gray-500 shrink-0">Set all:</span>
-                <select value={bulkWork} onChange={e => setBulkWork(Number(e.target.value))}
-                  className="text-sm border border-gray-200 rounded px-1.5 py-1 bg-white w-16">
-                  {[0,1,2,3,4,5,6,7,8].map(h => <option key={h} value={h}>{h}h</option>)}
-                </select>
-                <select value={bulkOt} onChange={e => setBulkOt(Number(e.target.value))}
-                  className="text-sm border border-gray-200 rounded px-1.5 py-1 bg-white w-16">
-                  {[0,1,2,3,4,5,6,7,8].map(h => <option key={h} value={h}>+{h}h</option>)}
-                </select>
-                <button onClick={applyBulk} className="btn btn-sm btn-outline text-xs px-3">Apply to all</button>
-              </div>
+        {/* Complete cards — one per active draft session */}
+        {draftSessions.map(recs => (
+          <CompleteSessionCard
+            key={recs[0]?.project_id || 'none'}
+            draftRecs={recs}
+            empList={empList}
+            projList={projList}
+            showAlert={showAlert}
+            onDone={loadAll}
+          />
+        ))}
 
-              {/* Add late worker */}
-              <div className="mt-2">
-                {addOpen ? (
-                  <div className="flex items-center gap-2 mt-1">
-                    <select value={addEmpId} onChange={e => setAddEmpId(e.target.value)}
-                      className="flex-1 text-sm border border-gray-200 rounded px-2 py-1.5 bg-white">
-                      <option value="">Select worker…</option>
-                      {addableEmps.map(e => <option key={e.id} value={e.id}>{e.full_name}</option>)}
-                    </select>
-                    <button onClick={handleAddWorker} disabled={!addEmpId} className="btn btn-sm btn-primary text-xs px-3">Add</button>
-                    <button onClick={() => { setAddOpen(false); setAddEmpId(''); }} className="btn btn-sm btn-outline text-xs">✕</button>
-                  </div>
-                ) : (
-                  <button onClick={() => setAddOpen(true)}
-                    className="text-sm text-primary hover:underline flex items-center gap-1 mt-1">
-                    + Add late worker
-                  </button>
-                )}
-              </div>
+        {/* Check-In form — always visible so leader can start a new site */}
+        <div className="card space-y-5">
+          <h3 className="font-semibold text-gray-800">
+            {draftSessions.length > 0 ? '+ Check In Another Site' : 'Morning Check-In'}
+          </h3>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="form-label">Date</label>
+              <input type="date" className="form-control" value={ciDate}
+                onChange={e => { setCiDate(e.target.value); setCheckedIds(new Set()); setAutoCount(null); }} />
             </div>
             <div>
-              <p className="form-label mb-3">Group Photos</p>
-              <div className="flex gap-6 flex-wrap">
-                <PhotoBtn label="Check-Out Photo *" url={coPhoto} onUrl={setCoPhoto} type="check_out_photo" />
-              </div>
+              <label className="form-label">Project</label>
+              <select className="form-control" value={ciProject} onChange={e => setCiProject(e.target.value)}>
+                <option value="">No project</option>
+                {availableProjects.map(p => <option key={p.id} value={p.id}>{p.name}{p.code ? ` (${p.code})` : ''}</option>)}
+              </select>
             </div>
-            <div>
-              <p className="form-label mb-3">Site Photos (for bonus review)</p>
-              <div className="flex gap-6 flex-wrap">
-                <PhotoBtn label="Front"  url={frontPhoto} onUrl={setFrontPhoto} type="site_front" photoLabel="front" />
-                <PhotoBtn label="Back"   url={backPhoto}  onUrl={setBackPhoto}  type="site_back"  photoLabel="back"  />
-                <PhotoBtn label="Store"  url={storePhoto} onUrl={setStorePhoto} type="site_store" photoLabel="store" />
-              </div>
-              <p className="text-xs text-gray-400 mt-2">Boss reviews site photos to grant <strong>+RM10</strong> site bonus for workers ≥8h.</p>
-            </div>
-            <button type="button" disabled={saving} onClick={handleComplete} className="btn btn-primary w-full">
-              {saving ? 'Submitting…' : '📤 Submit for Approval'}
-            </button>
           </div>
-        )}
-
-        {!hasDraft && !hasSubmitted && (
-          <div className="card space-y-5">
-            <h3 className="font-semibold text-gray-800">Morning Check-In</h3>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="form-label">Date</label>
-                <input type="date" className="form-control" value={ciDate}
-                  onChange={e => { setCiDate(e.target.value); setCheckedIds(new Set()); setAutoCount(null); }} />
-              </div>
-              <div>
-                <label className="form-label">Project</label>
-                <select className="form-control" value={ciProject} onChange={e => setCiProject(e.target.value)}>
-                  <option value="">No project</option>
-                  {activeProjects.map(p => <option key={p.id} value={p.id}>{p.name}{p.code ? ` (${p.code})` : ''}</option>)}
-                </select>
-              </div>
+          <div className="flex items-start gap-5">
+            <PhotoBtn label="Check-In Group Photo *" url={ciPhoto} onUrl={setCiPhoto} type="check_in_photo" />
+          </div>
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="form-label mb-0">
+                Workers *{' '}{checkedIds.size > 0 && <span className="badge bg-primary text-white ml-1">{checkedIds.size} selected</span>}
+              </label>
+              <button type="button" className="text-xs text-primary underline"
+                onClick={() => allSelected ? setCheckedIds(new Set()) : setCheckedIds(new Set(filteredEmps.map(e => e.id)))}>
+                {allSelected ? 'Deselect All' : 'Select All'}
+              </button>
             </div>
-            <div className="flex items-start gap-5">
-              <PhotoBtn label="Check-In Group Photo *" url={ciPhoto} onUrl={setCiPhoto} type="check_in_photo" />
-            </div>
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="form-label mb-0">
-                  Workers *{' '}{checkedIds.size > 0 && <span className="badge bg-primary text-white ml-1">{checkedIds.size} selected</span>}
+            {autoLoading && <div className="mb-2 text-xs text-gray-400 flex items-center gap-1">⏳ Auto-selecting from yesterday…</div>}
+            {!autoLoading && autoCount !== null && (
+              <div className={`mb-2 text-xs px-3 py-2 rounded border ${autoCount > 0 ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-gray-50 border-gray-200 text-gray-500'}`}>
+                {autoCount > 0 ? <>📋 <strong>{autoCount}</strong> workers auto-selected from yesterday. Untick anyone absent.</> : <>ℹ️ No yesterday records — select manually.</>}
+              </div>
+            )}
+            <input className="form-control mb-2" placeholder="Search worker…" value={empSearch} onChange={e => setEmpSearch(e.target.value)} />
+            <div className="border border-gray-200 rounded max-h-52 overflow-y-auto">
+              {filteredEmps.map(emp => (
+                <label key={emp.id}
+                  className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-gray-50 border-b border-gray-50 last:border-0 transition-colors ${checkedIds.has(emp.id) ? 'bg-blue-50' : ''}`}>
+                  <input type="checkbox" className="accent-primary" checked={checkedIds.has(emp.id)} onChange={() => {
+                    setCheckedIds(prev => { const n = new Set(prev); n.has(emp.id) ? n.delete(emp.id) : n.add(emp.id); return n; });
+                  }} />
+                  <span className="text-sm">{emp.full_name}</span>
+                  {emp.id === myEmpId && <span className="text-xs text-primary font-medium">(me)</span>}
                 </label>
-                <button type="button" className="text-xs text-primary underline"
-                  onClick={() => allSelected ? setCheckedIds(new Set()) : setCheckedIds(new Set(filteredEmps.map(e => e.id)))}>
-                  {allSelected ? 'Deselect All' : 'Select All'}
-                </button>
-              </div>
-              {autoLoading && <div className="mb-2 text-xs text-gray-400 flex items-center gap-1">⏳ Auto-selecting from yesterday…</div>}
-              {!autoLoading && autoCount !== null && (
-                <div className={`mb-2 text-xs px-3 py-2 rounded border ${autoCount > 0 ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-gray-50 border-gray-200 text-gray-500'}`}>
-                  {autoCount > 0 ? <>📋 <strong>{autoCount}</strong> workers auto-selected from yesterday. Untick anyone absent.</> : <>ℹ️ No yesterday records — select manually.</>}
-                </div>
-              )}
-              <input className="form-control mb-2" placeholder="Search worker…" value={empSearch} onChange={e => setEmpSearch(e.target.value)} />
-              <div className="border border-gray-200 rounded max-h-52 overflow-y-auto">
-                {filteredEmps.map(emp => (
-                  <label key={emp.id}
-                    className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-gray-50 border-b border-gray-50 last:border-0 transition-colors ${checkedIds.has(emp.id) ? 'bg-blue-50' : ''}`}>
-                    <input type="checkbox" className="accent-primary" checked={checkedIds.has(emp.id)} onChange={() => {
-                      setCheckedIds(prev => { const n = new Set(prev); n.has(emp.id) ? n.delete(emp.id) : n.add(emp.id); return n; });
-                    }} />
-                    <span className="text-sm">{emp.full_name}</span>
-                    {emp.id === myEmpId && <span className="text-xs text-primary font-medium">(me)</span>}
-                  </label>
-                ))}
-              </div>
+              ))}
             </div>
-            <button type="button" disabled={saving} onClick={handleCheckIn} className="btn btn-primary w-full">
-              {saving ? 'Checking in…' : '✓ Check In'}
-            </button>
           </div>
-        )}
+          <button type="button" disabled={saving} onClick={handleCheckIn} className="btn btn-primary w-full">
+            {saving ? 'Checking in…' : '✓ Check In'}
+          </button>
+        </div>
       </div>
 
       {/* ── My History ─── */}
