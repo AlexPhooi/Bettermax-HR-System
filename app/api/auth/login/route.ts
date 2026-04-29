@@ -22,8 +22,8 @@ export async function POST(req: NextRequest) {
   res.cookies.set('token', token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
-    maxAge: 8 * 60 * 60,
+    sameSite: 'lax',           // 'strict' can drop cookie on some mobile browsers
+    maxAge: 30 * 24 * 60 * 60, // 30 days — stays logged in across sessions
     path: '/',
   });
   return res;
