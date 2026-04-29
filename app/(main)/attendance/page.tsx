@@ -171,6 +171,79 @@ function HourPicker({ value, onChange, max, label, prefix = '' }: {
   );
 }
 
+// ── Watermark helper ──────────────────────────────────────────────────
+// Draws a server-time stamp onto the image via canvas and returns a Blob.
+async function applyWatermark(file: File): Promise<Blob> {
+  // Fetch server time (NTP-synced, not phone clock)
+  let dateStr = '';
+  let timeStr = '';
+  try {
+    const t = await fetch('/api/time').then(r => r.json());
+    dateStr = t.date || '';
+    timeStr = t.time || '';
+  } catch {
+    // Fallback: use device time if server unreachable
+    const now = new Date();
+    dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    timeStr = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+  }
+
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+
+      const canvas  = document.createElement('canvas');
+      canvas.width  = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext('2d')!;
+
+      // Draw original image
+      ctx.drawImage(img, 0, 0);
+
+      // ── Watermark bar ─────────────────────────────────────────────
+      const w   = canvas.width;
+      const h   = canvas.height;
+      const barH = Math.round(h * 0.10);           // 10% of image height
+      const pad  = Math.round(barH * 0.18);
+      const fontSize = Math.round(barH * 0.38);
+      const smallSize = Math.round(barH * 0.28);
+
+      // Semi-transparent black bar at bottom
+      ctx.fillStyle = 'rgba(0,0,0,0.62)';
+      ctx.fillRect(0, h - barH, w, barH);
+
+      ctx.textBaseline = 'middle';
+      const midY = h - barH / 2;
+
+      // Date (left, larger)
+      ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+      ctx.fillStyle = '#FFFFFF';
+      ctx.textAlign = 'left';
+      ctx.fillText(dateStr, pad, midY - smallSize * 0.35);
+
+      // Time (left, below date)
+      ctx.font = `${smallSize}px Arial, sans-serif`;
+      ctx.fillStyle = '#E0E0E0';
+      ctx.fillText(timeStr + '  (KL)', pad, midY + fontSize * 0.52);
+
+      // Brand (right side)
+      ctx.font = `bold ${smallSize}px Arial, sans-serif`;
+      ctx.fillStyle = 'rgba(255,255,255,0.55)';
+      ctx.textAlign = 'right';
+      ctx.fillText('Bettermax HR', w - pad, midY);
+
+      canvas.toBlob(blob => {
+        if (blob) resolve(blob);
+        else reject(new Error('Canvas toBlob failed'));
+      }, 'image/jpeg', 0.88);
+    };
+    img.onerror = reject;
+    img.src = objectUrl;
+  });
+}
+
 // Photo upload button for standalone use
 // onUploadChange: called with true when upload starts, false when it ends (success or error)
 function PhotoBtn({ label, url, onUrl, type, photoLabel, onUploadChange }: {
@@ -199,8 +272,12 @@ function PhotoBtn({ label, url, onUrl, type, photoLabel, onUploadChange }: {
     if (!file) return;
     markUpload(true);
     try {
+      // Burn date/time watermark into image before uploading
+      const watermarked = await applyWatermark(file);
+      const stamped = new File([watermarked], file.name, { type: 'image/jpeg' });
+
       const fd = new FormData();
-      fd.append('file', file);
+      fd.append('file', stamped);
       fd.append('type', type);
       if (photoLabel) fd.append('label', photoLabel);
       const res  = await fetch('/api/upload', { method: 'POST', body: fd });
