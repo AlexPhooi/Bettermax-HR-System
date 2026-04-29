@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 @layer base {
-  body { @apply bg-bg text-gray-800; }
+  body { @apply bg-bg text-gray-800; overscroll-behavior-y: none; }
 }
 
 @layer components {

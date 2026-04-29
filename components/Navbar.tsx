@@ -241,7 +241,7 @@ export default function Navbar() {
         </div>
       </nav>
       {open && (
-        <div className="md:hidden bg-primary-light shadow-lg z-40">
+        <div className="md:hidden fixed top-14 left-0 right-0 bg-primary-light shadow-lg z-40">
           {navLinks.map(l => (
             <Link key={l.href} href={l.href} onClick={() => setOpen(false)}
               className={`block px-6 py-3 text-sm border-b border-white/10 transition-colors relative
