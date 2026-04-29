@@ -79,15 +79,61 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   return NextResponse.json(data);
 }
 
-// DELETE: soft-delete — sends record to Bin
+// DELETE: soft-delete — sends record to Bin, reverses any savings credit
 export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
   const user = await getUser(req);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!isManager(user.role)) return NextResponse.json({ error: 'Admin/Owner only.' }, { status: 403 });
 
+  // Fetch record before deleting to check for savings credit to reverse
+  const { data: rec } = await supabase.from('hr_attendance')
+    .select('employee_id, status, site_bonus')
+    .eq('id', params.id).single();
+
+  // Soft-delete the attendance record
   const { error } = await supabase.from('hr_attendance')
     .update({ deleted_at: new Date().toISOString() })
     .eq('id', params.id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // ── Reverse savings credit if this was an approved record with site bonus ──
+  if (rec && rec.status === 'approved' && Number(rec.site_bonus) > 0) {
+    const bonus = Number(rec.site_bonus);
+
+    // Check if a savings credit exists for this attendance record
+    const { data: savRow } = await supabase.from('savings')
+      .select('id, amount')
+      .eq('reference_id', params.id)
+      .eq('type_detail', 'mission_bonus')
+      .single();
+
+    if (savRow) {
+      // Recalculate current balance for this employee
+      const { data: allRows } = await supabase.from('savings')
+        .select('type, amount').eq('employee_id', rec.employee_id);
+      const currentBal = (allRows || []).reduce((s, r) =>
+        r.type === 'credit' ? s + Number(r.amount) : s - Number(r.amount), 0);
+      const balanceAfter = Math.round((currentBal - bonus) * 100) / 100;
+
+      // Insert reversal debit
+      await supabase.from('savings').insert({
+        employee_id:   rec.employee_id,
+        type:          'debit',
+        type_detail:   'mission_bonus_reversal',
+        amount:        bonus,
+        balance_after: balanceAfter,
+        reason:        `Reversal — attendance record deleted`,
+        reference_id:  params.id,
+        month:         new Date().toISOString().slice(0, 7),
+        created_by:    user.id,
+      });
+
+      // Sync employees.site_bonus_balance
+      await supabase.from('employees')
+        .update({ site_bonus_balance: Math.max(0, balanceAfter) })
+        .eq('id', rec.employee_id);
+    }
+  }
+
   return NextResponse.json({ success: true });
 }
