@@ -1630,13 +1630,13 @@ function AdminView() {
         {binOpen && (
           <div className="mt-3 card p-0 overflow-hidden">
             <div className="px-5 py-3 border-b border-bg bg-gray-50">
-              <p className="text-xs text-gray-500">Deleted attendance records are stored here. Restore to recover.</p>
+              <p className="text-xs text-gray-500">Deleted records are kept for <strong>30 days</strong> then permanently removed. Restore before expiry to recover.</p>
             </div>
             <div className="p-4">
               {binLoading ? (
                 <div className="py-8 text-center text-gray-400 text-sm">Loading bin…</div>
               ) : !binData || binData.length === 0 ? (
-                <div className="py-8 text-center text-gray-400 text-sm">No deleted attendance records.</div>
+                <div className="py-8 text-center text-gray-400 text-sm">Bin is empty.</div>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
@@ -1646,29 +1646,42 @@ function AdminView() {
                         <th className="table-th">Employee</th>
                         <th className="table-th">Project</th>
                         <th className="table-th">Hours</th>
-                        <th className="table-th">Deleted At</th>
+                        <th className="table-th">Expires</th>
                         <th className="table-th">Action</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {binData.map(row => (
-                        <tr key={row.id} className="table-tr">
-                          <td className="table-td">{row.work_date}</td>
-                          <td className="table-td font-medium">{row.employees?.full_name || <span className="text-gray-400">—</span>}</td>
-                          <td className="table-td">
-                            {row.projects
-                              ? <span className="badge bg-blue-50 text-blue-700">{row.projects.code || row.projects.name}</span>
-                              : <span className="text-gray-400">—</span>}
-                          </td>
-                          <td className="table-td">{row.hours_worked}h</td>
-                          <td className="table-td text-gray-500">
-                            {new Date(row.deleted_at).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' })}
-                          </td>
-                          <td className="table-td">
-                            <button onClick={() => handleRestoreAtt(row.id)} className="btn btn-sm bg-green-500 hover:bg-green-600 text-white">↩ Restore</button>
-                          </td>
-                        </tr>
-                      ))}
+                      {binData.map(row => {
+                        const deletedAt  = new Date(row.deleted_at);
+                        const expiresAt  = new Date(deletedAt);
+                        expiresAt.setDate(expiresAt.getDate() + 30);
+                        const daysLeft   = Math.ceil((expiresAt.getTime() - Date.now()) / 86400000);
+                        const urgent     = daysLeft <= 3;
+                        const expiresSoon = daysLeft <= 7;
+                        return (
+                          <tr key={row.id} className={`table-tr ${urgent ? 'bg-red-50/40' : ''}`}>
+                            <td className="table-td">{row.work_date}</td>
+                            <td className="table-td font-medium">{row.employees?.full_name || <span className="text-gray-400">—</span>}</td>
+                            <td className="table-td">
+                              {row.projects
+                                ? <span className="badge bg-blue-50 text-blue-700">{row.projects.code || row.projects.name}</span>
+                                : <span className="text-gray-400">—</span>}
+                            </td>
+                            <td className="table-td">{row.hours_worked}h</td>
+                            <td className="table-td">
+                              <span className={`text-xs font-semibold ${urgent ? 'text-red-600' : expiresSoon ? 'text-orange-500' : 'text-gray-400'}`}>
+                                {daysLeft <= 0 ? '⚠️ Expiring now' : `${urgent ? '⚠️ ' : ''}${daysLeft}d left`}
+                              </span>
+                              <p className="text-[10px] text-gray-400 mt-0.5">
+                                {expiresAt.toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' })}
+                              </p>
+                            </td>
+                            <td className="table-td">
+                              <button onClick={() => handleRestoreAtt(row.id)} className="btn btn-sm bg-green-500 hover:bg-green-600 text-white">↩ Restore</button>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
