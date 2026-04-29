@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
 
   const [empRes, attRes, advRes] = await Promise.all([
     supabase.from('employees').select('id, full_name, daily_rate, status, bank_name, bank_account, site_bonus_balance').eq('status', 'active'),
-    supabase.from('hr_attendance').select('employee_id, days_worked, ot_hours, site_bonus').gte('work_date', start).lte('work_date', end).eq('status', 'approved'),
+    supabase.from('hr_attendance').select('employee_id, days_worked, ot_hours, site_bonus').gte('work_date', start).lte('work_date', end).eq('status', 'approved').is('deleted_at', null),
     supabase.from('advances').select('employee_id, amount').eq('month', month),
   ]);
   if (empRes.error) return NextResponse.json({ error: empRes.error.message }, { status: 500 });

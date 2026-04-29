@@ -20,7 +20,8 @@ export async function GET(req: NextRequest) {
     const { data: att } = await supabase.from('hr_attendance')
       .select('days_worked, hours_worked, status, work_date')
       .eq('employee_id', user.employee_id)
-      .gte('work_date', start).lte('work_date', end);
+      .gte('work_date', start).lte('work_date', end)
+      .is('deleted_at', null);
     const approvedAtt = (att || []).filter(a => a.status === 'approved');
     const totalDays = approvedAtt.reduce((s, a) => s + Number(a.days_worked || 0), 0);
     return NextResponse.json({
@@ -38,7 +39,7 @@ export async function GET(req: NextRequest) {
 
   const [empRes, attRes, expRes, expiredRes, pendingRes, binStaffRes, binAttRes, binSalaryRes, allEmpRes] = await Promise.all([
     supabase.from('employees').select('id', { count: 'exact', head: true }).eq('status', 'active'),
-    supabase.from('hr_attendance').select('days_worked, site_bonus, employees(daily_rate)').gte('work_date', start).lte('work_date', end).eq('status', 'approved'),
+    supabase.from('hr_attendance').select('days_worked, site_bonus, employees(daily_rate)').gte('work_date', start).lte('work_date', end).eq('status', 'approved').is('deleted_at', null),
     supabase.from('employees').select('id, full_name, permit_expire').eq('status', 'active').lte('permit_expire', in60).gte('permit_expire', today).order('permit_expire'),
     supabase.from('employees').select('id, full_name, permit_expire').eq('status', 'active').lt('permit_expire', today).not('permit_expire', 'is', null).order('permit_expire'),
     supabase.from('hr_attendance').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
