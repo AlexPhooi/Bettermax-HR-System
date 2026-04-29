@@ -2,35 +2,174 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Brand CSS variables ──────────────────────────────────────────── */
+:root {
+  --brown-deep:  #1A0E06;
+  --brown-mid:   #3D2B1F;
+  --brown-light: #6B4226;
+  --gold:        #C9A84C;
+  --gold-light:  #E8D5A3;
+  --gold-muted:  #C49A6C;
+  --gold-pale:   #FAF5E9;
+  --text-dark:   #2C1A0E;
+  --white:       #FFFFFF;
+  --danger:      #A32D2D;
+  --success:     #27500A;
+  --warning:     #B8860B;
+}
+
 @layer base {
-  body { @apply bg-bg text-gray-800; overscroll-behavior-y: none; }
+  body {
+    @apply bg-bg text-[#2C1A0E];
+    font-family: Arial, Helvetica, sans-serif;
+    overscroll-behavior-y: none;
+  }
+  h1, h2, h3, h4 {
+    font-family: Georgia, 'Times New Roman', serif;
+  }
 }
 
 @layer components {
-  .btn       { @apply inline-flex items-center gap-1.5 px-4 py-2 rounded font-medium text-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap; }
-  .btn-primary   { @apply bg-primary text-white hover:bg-primary-light; }
-  .btn-success   { @apply bg-accent text-white hover:bg-green-700; }
-  .btn-danger    { @apply bg-danger text-white hover:bg-red-700; }
-  .btn-warning   { @apply bg-warn text-white hover:bg-orange-600; }
-  .btn-secondary { @apply bg-gray-500 text-white hover:bg-gray-600; }
-  .btn-outline   { @apply border border-primary text-primary hover:bg-primary hover:text-white; }
-  .btn-sm        { @apply px-2.5 py-1 text-xs; }
 
-  .card          { @apply bg-white rounded-lg shadow-sm p-6 mb-6; }
-  .card-title    { @apply text-base font-semibold text-primary mb-4 pb-3 border-b border-bg; }
+  /* ── Buttons ──────────────────────────────────────────────────── */
+  .btn {
+    @apply inline-flex items-center gap-1.5 px-4 py-2 rounded font-medium text-sm
+           transition-colors disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap;
+    font-family: Arial, Helvetica, sans-serif;
+  }
+  .btn-primary {
+    background: var(--gold);
+    color: var(--brown-deep);
+    font-weight: 700;
+  }
+  .btn-primary:hover:not(:disabled) { background: var(--gold-light); }
 
-  .form-label    { @apply block text-sm font-medium text-gray-600 mb-1; }
-  .form-control  { @apply w-full px-3 py-2 border border-gray-300 rounded text-sm bg-white focus:outline-none focus:border-primary-light focus:ring-2 focus:ring-primary/10 transition-colors; }
+  .btn-success {
+    background: #27500A;
+    @apply text-white;
+  }
+  .btn-success:hover:not(:disabled) { background: #1d3d07; }
 
-  .table-th      { @apply bg-primary text-white px-4 py-2.5 text-left text-sm font-medium whitespace-nowrap; }
-  .table-td      { @apply px-4 py-2.5 border-b border-gray-50 text-sm align-middle; }
-  .table-tr      { @apply hover:bg-gray-50/70 transition-colors; }
+  .btn-danger {
+    background: transparent;
+    color: var(--danger);
+    border: 1px solid var(--danger);
+  }
+  .btn-danger:hover:not(:disabled) { background: #fcebeb; }
 
-  .badge         { @apply inline-block px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap; }
+  .btn-warning {
+    background: var(--gold-muted);
+    color: var(--brown-deep);
+    font-weight: 700;
+  }
+  .btn-warning:hover:not(:disabled) { background: var(--gold); }
 
-  .alert         { @apply px-4 py-2.5 rounded text-sm mb-4 border-l-4; }
-  .alert-danger  { @apply bg-red-50 text-red-800 border-danger; }
-  .alert-success { @apply bg-green-50 text-green-800 border-accent; }
-  .alert-warning { @apply bg-yellow-50 text-yellow-800 border-warn; }
-  .alert-info    { @apply bg-blue-50 text-blue-800 border-blue-500; }
+  .btn-secondary {
+    background: var(--brown-mid);
+    @apply text-white;
+  }
+  .btn-secondary:hover:not(:disabled) { background: var(--brown-light); }
+
+  .btn-outline {
+    background: transparent;
+    color: var(--brown-deep);
+    border: 1px solid var(--gold-muted);
+  }
+  .btn-outline:hover:not(:disabled) {
+    border-color: var(--gold);
+    color: var(--brown-deep);
+    background: var(--gold-pale);
+  }
+
+  .btn-sm { @apply px-2.5 py-1 text-xs; }
+
+  /* ── Cards ──────────────────────────────────────────────────────── */
+  .card {
+    background: var(--white);
+    border: 0.5px solid var(--gold-muted);
+    border-radius: 8px;
+    @apply p-6 mb-6;
+  }
+  .card-title {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text-dark);
+    border-bottom: 1px solid var(--gold-light);
+    @apply mb-4 pb-3;
+  }
+
+  /* ── Forms ──────────────────────────────────────────────────────── */
+  .form-label {
+    @apply block text-xs font-semibold mb-1 uppercase tracking-wide;
+    color: var(--brown-light);
+    font-family: Arial, Helvetica, sans-serif;
+  }
+  .form-control {
+    @apply w-full px-3 py-2 rounded text-sm transition-colors;
+    border: 1px solid var(--gold-muted);
+    background: var(--white);
+    color: var(--text-dark);
+    font-family: Arial, Helvetica, sans-serif;
+  }
+  .form-control:focus {
+    outline: none;
+    border-color: var(--gold);
+    box-shadow: 0 0 0 3px rgba(201,168,76,.15);
+  }
+
+  /* ── Tables ─────────────────────────────────────────────────────── */
+  .table-th {
+    background: var(--brown-deep);
+    color: var(--gold);
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .07em;
+    @apply px-4 py-2.5 text-left whitespace-nowrap;
+  }
+  .table-td {
+    @apply px-4 py-2.5 text-sm align-middle;
+    border-bottom: 0.5px solid var(--gold-light);
+    color: var(--text-dark);
+  }
+  .table-tr { transition: background .12s; }
+  .table-tr:hover { background: var(--gold-pale); }
+
+  /* ── Badges ─────────────────────────────────────────────────────── */
+  .badge {
+    @apply inline-block px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap;
+    font-family: Arial, Helvetica, sans-serif;
+  }
+
+  /* ── Alerts ─────────────────────────────────────────────────────── */
+  .alert {
+    @apply px-4 py-2.5 rounded text-sm mb-4 border-l-4;
+    font-family: Arial, Helvetica, sans-serif;
+  }
+  .alert-danger  { background: #fcebeb; color: #791f1f; border-color: var(--danger); }
+  .alert-success { background: #eaf3de; color: var(--success); border-color: var(--success); }
+  .alert-warning { background: #faeeda; color: #633806; border-color: var(--gold-muted); }
+  .alert-info    { background: #faf5e9; color: var(--brown-light); border-color: var(--gold); }
+
+  /* ── Modal overlay ───────────────────────────────────────────────── */
+  .modal-overlay {
+    @apply fixed inset-0 flex items-center justify-center z-50;
+    background: rgba(26,14,6,.7);
+  }
+  .modal-box {
+    background: var(--white);
+    border-radius: 10px;
+    border-top: 3px solid var(--gold);
+    @apply p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl;
+  }
+  .modal-title {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--text-dark);
+    border-bottom: 1px solid var(--gold-light);
+    @apply mb-4 pb-3;
+  }
 }

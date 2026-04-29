@@ -4,6 +4,7 @@ import './globals.css';
 export const metadata: Metadata = {
   title: 'Bettermax Enterprise HR',
   description: 'HR Management System',
+  icons: { icon: '/icon.svg' },
 };
 
 export const viewport: Viewport = {
