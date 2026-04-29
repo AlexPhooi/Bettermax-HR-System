@@ -1382,11 +1382,22 @@ function AdminView() {
                       </td>
                       <td className="table-td"><StatusBadge status={grp.status} /></td>
                       <td className="table-td">
-                        <button
-                          className={`btn btn-sm text-xs transition-colors ${isPending ? 'btn-primary' : 'btn-outline'}`}
-                          onClick={e => { e.stopPropagation(); toggleExpand(grp.key); }}>
-                          {isOpen ? '▲ Hide' : '▼ Details'}
-                        </button>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            className={`btn btn-sm text-xs transition-colors ${isPending ? 'btn-primary' : 'btn-outline'}`}
+                            onClick={e => { e.stopPropagation(); toggleExpand(grp.key); }}>
+                            {isOpen ? '▲ Hide' : '▼ Details'}
+                          </button>
+                          <button
+                            className="btn btn-sm btn-danger text-xs"
+                            onClick={e => {
+                              e.stopPropagation();
+                              if (!confirm(`Delete all ${grp.workerCount} record${grp.workerCount !== 1 ? 's' : ''} for ${formatDate(grp.work_date)}${grp.project ? ' — ' + (grp.project.code || grp.project.name) : ''}?\n\nThis moves them to the Bin.`)) return;
+                              Promise.all(grp.records.map(r => fetch(`/api/attendance/${r.id}`, { method: 'DELETE' }))).then(loadData);
+                            }}>
+                            🗑
+                          </button>
+                        </div>
                       </td>
                     </tr>,
 
