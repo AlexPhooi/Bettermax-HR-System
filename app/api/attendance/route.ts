@@ -40,8 +40,10 @@ export async function GET(req: NextRequest) {
       // Leader's own attendance records (for My Attendance page)
       query = query.eq('employee_id', user.employee_id);
     } else {
-      // Leader sees all records submitted by themselves (team management)
+      // Leader sees records submitted by themselves (team management)
       query = query.eq('submitted_by', user.id);
+      // Allow filtering by project (e.g. auto-select yesterday's workers per site)
+      if (sp.get('project_id')) query = query.eq('project_id', sp.get('project_id')!);
     }
   } else if (user.role === 'approval') {
     const mode = sp.get('mode');

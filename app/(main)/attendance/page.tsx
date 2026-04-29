@@ -586,7 +586,7 @@ function LeaderView() {
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
-  // Auto-select workers from yesterday
+  // Auto-select workers from yesterday for the same project
   useEffect(() => {
     if (empList.length === 0) return;
     async function autoSelect() {
@@ -599,7 +599,11 @@ function LeaderView() {
         String(prev.getMonth() + 1).padStart(2, '0'),
         String(prev.getDate()).padStart(2, '0'),
       ].join('-');
-      const res = await fetch(`/api/attendance?date=${prevStr}`).then(r => r.json());
+      // Filter by project if one is selected
+      const url = ciProject
+        ? `/api/attendance?date=${prevStr}&project_id=${ciProject}`
+        : `/api/attendance?date=${prevStr}`;
+      const res = await fetch(url).then(r => r.json());
       if (Array.isArray(res)) {
         const activeIds = new Set(empList.map(e => e.id));
         const ids = new Set<string>(res.map((r: AttRecord) => r.employee_id).filter(id => activeIds.has(id)));
@@ -609,7 +613,7 @@ function LeaderView() {
     }
     autoSelect();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ciDate, empList]);
+  }, [ciDate, ciProject, empList]);
 
   const filteredEmps = useMemo(() =>
     empList.filter(e => !empSearch || e.full_name.toLowerCase().includes(empSearch.toLowerCase())),
@@ -826,7 +830,9 @@ function LeaderView() {
             {autoLoading && <div className="mb-2 text-xs text-gray-400 flex items-center gap-1">⏳ Auto-selecting from yesterday…</div>}
             {!autoLoading && autoCount !== null && (
               <div className={`mb-2 text-xs px-3 py-2 rounded border ${autoCount > 0 ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-gray-50 border-gray-200 text-gray-500'}`}>
-                {autoCount > 0 ? <>📋 <strong>{autoCount}</strong> workers auto-selected from yesterday. Untick anyone absent.</> : <>ℹ️ No yesterday records — select manually.</>}
+                {autoCount > 0
+                  ? <>📋 <strong>{autoCount}</strong> workers auto-selected from yesterday{ciProject ? ' (same project)' : ''}. Untick anyone absent.</>
+                  : <>ℹ️ No records for this project yesterday — select manually.</>}
               </div>
             )}
             <input className="form-control mb-2" placeholder="Search worker…" value={empSearch} onChange={e => setEmpSearch(e.target.value)} />
