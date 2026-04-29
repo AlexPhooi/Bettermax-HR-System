@@ -71,7 +71,10 @@ interface Employee {
 interface Project  { id: string; name: string; code: string | null; status: string; }
 interface Advance  { id: string; employee_id: string; advance_date: string | null; amount: number; }
 
-const today = () => new Date().toISOString().split('T')[0];
+const today = () => {
+  const d = new Date();
+  return [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-');
+};
 
 // ── Shared helpers ─────────────────────────────────────────────────────
 function StatusBadge({ status }: { status: string }) {
@@ -588,10 +591,15 @@ function LeaderView() {
     if (empList.length === 0) return;
     async function autoSelect() {
       setAutoLoading(true); setAutoCount(null);
-      const d = new Date(ciDate + 'T00:00:00');
-      d.setDate(d.getDate() - 1);
-      const prev = d.toISOString().split('T')[0];
-      const res = await fetch(`/api/attendance?date=${prev}`).then(r => r.json());
+      // Use local date parts to avoid UTC-offset shifting the date
+      const [y, m, d] = ciDate.split('-').map(Number);
+      const prev = new Date(y, m - 1, d - 1);
+      const prevStr = [
+        prev.getFullYear(),
+        String(prev.getMonth() + 1).padStart(2, '0'),
+        String(prev.getDate()).padStart(2, '0'),
+      ].join('-');
+      const res = await fetch(`/api/attendance?date=${prevStr}`).then(r => r.json());
       if (Array.isArray(res)) {
         const activeIds = new Set(empList.map(e => e.id));
         const ids = new Set<string>(res.map((r: AttRecord) => r.employee_id).filter(id => activeIds.has(id)));
