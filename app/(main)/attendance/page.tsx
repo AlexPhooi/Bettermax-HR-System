@@ -1124,13 +1124,37 @@ function AdminView() {
         body: JSON.stringify({ check_in_time: edit.check_in_time, check_out_time: edit.check_out_time }),
       });
       if (!res.ok) { const d = await res.json(); showAlert(d.error || 'Save failed.', 'danger'); return; }
-      showAlert(`⏱ Times updated for ${rec.employees?.full_name || 'worker'}.`);
-      // Invalidate history cache for this group so it reloads
       const grpKey = `${rec.work_date}__${rec.project_id || 'none'}`;
+      setEditHistory(prev => { const n = { ...prev }; delete n[grpKey]; return n; });
+    } finally {
+      setSavingRecs(prev => { const n = new Set(prev); n.delete(rec.id); return n; });
+    }
+  }
+
+  // Save all edited records in a group in parallel
+  async function saveAllInGroup(grp: AttGroup) {
+    const dirtyRecs = grp.records.filter(rec => {
+      const edit = recEdits[rec.id];
+      return !!edit && (
+        edit.check_in_time  !== (rec.check_in_time  || adminSchedule.default_start) ||
+        edit.check_out_time !== (rec.check_out_time || adminSchedule.work_end)
+      );
+    });
+    if (!dirtyRecs.length) return;
+    const grpKey = grp.key;
+    setSavingRecs(prev => { const n = new Set(prev); dirtyRecs.forEach(r => n.add(r.id)); return n; });
+    try {
+      await Promise.all(dirtyRecs.map(rec =>
+        fetch(`/api/attendance/${rec.id}/edit-time`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ check_in_time: recEdits[rec.id].check_in_time, check_out_time: recEdits[rec.id].check_out_time }),
+        })
+      ));
+      showAlert(`✅ Times saved for ${dirtyRecs.length} worker${dirtyRecs.length > 1 ? 's' : ''}.`);
       setEditHistory(prev => { const n = { ...prev }; delete n[grpKey]; return n; });
       loadData();
     } finally {
-      setSavingRecs(prev => { const n = new Set(prev); n.delete(rec.id); return n; });
+      setSavingRecs(prev => { const n = new Set(prev); dirtyRecs.forEach(r => n.delete(r.id)); return n; });
     }
   }
 
@@ -1575,14 +1599,7 @@ function AdminView() {
                                           <td className="table-td"><StatusBadge status={rec.status} /></td>
                                           <td className="table-td">
                                             <div className="flex gap-1">
-                                              {isDirty && (
-                                                <button
-                                                  className="btn btn-sm text-xs bg-blue-500 hover:bg-blue-600 text-white"
-                                                  disabled={isSavingThis}
-                                                  onClick={() => saveRecordTimes(rec)}>
-                                                  {isSavingThis ? '…' : '💾'}
-                                                </button>
-                                              )}
+                                              {isDirty && <span className="text-blue-500 text-xs font-semibold">✏️</span>}
                                               <button className="btn btn-danger btn-sm text-xs" onClick={() => deleteRecord(rec.id)}>Del</button>
                                             </div>
                                           </td>
@@ -1597,7 +1614,23 @@ function AdminView() {
                                       <td className="table-td text-right text-accent">{formatRM(grp.totalSalary)}</td>
                                       <td className="table-td text-right text-green-700">{grp.totalSiteBonus > 0 ? `+${formatRM(grp.totalSiteBonus)}` : '—'}</td>
                                       <td className="table-td text-right text-red-600">{grp.totalAdvance > 0 ? `-${formatRM(grp.totalAdvance)}` : '—'}</td>
-                                      <td className="table-td" colSpan={2}></td>
+                                      <td className="table-td" colSpan={2}>
+                                        {(() => {
+                                          const anyDirty = grp.records.some(rec => {
+                                            const edit = recEdits[rec.id];
+                                            return !!edit && (edit.check_in_time !== (rec.check_in_time || adminSchedule.default_start) || edit.check_out_time !== (rec.check_out_time || adminSchedule.work_end));
+                                          });
+                                          const isSavingAny = grp.records.some(r => savingRecs.has(r.id));
+                                          return anyDirty ? (
+                                            <button
+                                              className="btn btn-sm bg-blue-600 hover:bg-blue-700 text-white text-xs w-full"
+                                              disabled={isSavingAny}
+                                              onClick={() => saveAllInGroup(grp)}>
+                                              {isSavingAny ? 'Saving…' : '💾 Save All'}
+                                            </button>
+                                          ) : null;
+                                        })()}
+                                      </td>
                                     </tr>
                                   </tfoot>
                                 </table>
