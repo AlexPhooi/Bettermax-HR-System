@@ -103,8 +103,9 @@ function RatesTab() {
       const res = await fetch('/api/settings/ranking-rates', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(draft),
       });
+      const data = await res.json();
       if (!res.ok) { showAlert('Failed to save.', 'danger'); return; }
-      showAlert('Ranking rates updated!');
+      showAlert(`Rates saved! ${data.employees_updated ?? 0} staff daily rates updated.`);
       setEditing(false);
       loadRates();
     } finally { setSaving(false); }
@@ -113,7 +114,7 @@ function RatesTab() {
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <p className="text-sm text-gray-500">Daily rate per rank. Changes apply to future salary calculations only.</p>
+        <p className="text-sm text-gray-500">Daily rate per rank. Saving will immediately update all active staff with that rank.</p>
         {!editing && <button className="btn btn-primary" onClick={startEdit}>✏️ Edit Rates</button>}
       </div>
 

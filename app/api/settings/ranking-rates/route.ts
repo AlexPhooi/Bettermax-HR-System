@@ -20,10 +20,25 @@ export async function PUT(req: NextRequest) {
   const body = await req.json(); // [{ rank, daily_rate }]
   if (!Array.isArray(body)) return NextResponse.json({ error: 'Array required.' }, { status: 400 });
 
+  let employeesUpdated = 0;
+
   for (const row of body) {
     if (!row.rank || !row.daily_rate) continue;
+    const rate = Number(row.daily_rate);
+
+    // 1. Save to ranking_rates table
     await supabase.from('ranking_rates')
-      .upsert({ rank: row.rank, daily_rate: Number(row.daily_rate), updated_at: new Date().toISOString() });
+      .upsert({ rank: row.rank, daily_rate: rate, updated_at: new Date().toISOString() });
+
+    // 2. Immediately apply to all active employees with this rank
+    const { data: updated } = await supabase.from('employees')
+      .update({ daily_rate: rate })
+      .eq('rank', row.rank)
+      .eq('status', 'active')
+      .is('deleted_at', null)
+      .select('id');
+    employeesUpdated += updated?.length ?? 0;
   }
-  return NextResponse.json({ success: true });
+
+  return NextResponse.json({ success: true, employees_updated: employeesUpdated });
 }
