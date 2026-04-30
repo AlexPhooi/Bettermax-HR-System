@@ -69,7 +69,13 @@ interface Employee {
   bank_name: string | null; bank_account: string | null;
 }
 interface Project  { id: string; name: string; code: string | null; status: string; }
-interface Advance  { id: string; employee_id: string; advance_date: string | null; amount: number; }
+interface Advance  {
+  id: string; employee_id: string; advance_date: string | null; amount: number;
+  month: string | null; detail_type: string | null; notes: string | null;
+  pay_by: string | null; bank_name: string | null; account_name: string | null;
+  account_no: string | null; bank_slip_url: string | null;
+  employees?: { full_name: string } | null;
+}
 
 const today = () => {
   const d = new Date();
@@ -946,6 +952,11 @@ function AdminView() {
   const [advSlipUploading, setAdvSlipUploading] = useState(false);
   const advSlipRef = useRef<HTMLInputElement>(null);
 
+  // Edit Advance modal
+  const [editAdvId,   setEditAdvId]   = useState<string | null>(null);
+  const [editAdvForm, setEditAdvForm] = useState({ amount: '', advance_date: '', detail_type: '', notes: '', pay_by: 'cash' });
+  const [editAdvSaving, setEditAdvSaving] = useState(false);
+
   // Bin
   const [binOpen,    setBinOpen]    = useState(false);
   const [binData,    setBinData]    = useState<{id: string; work_date: string; hours_worked: number; deleted_at: string; employees: {full_name: string} | null; projects: {name: string; code: string} | null}[] | null>(null);
@@ -1249,6 +1260,49 @@ function AdminView() {
       setAdvForm({ advance_date: today(), month: getCurrentMonth().substring(0, 7), amount: '', detail_type: 'makan', detail_note: '', pay_by: 'cash', bank_name: '', account_name: '', account_no: '', bank_slip_url: '', bank_search_id: '' });
       loadData();
     } finally { setAdvSaving(false); }
+  }
+
+  function openEditAdv(adv: Advance) {
+    setEditAdvId(adv.id);
+    setEditAdvForm({
+      amount:       String(adv.amount),
+      advance_date: adv.advance_date || '',
+      detail_type:  adv.detail_type  || 'makan',
+      notes:        adv.notes        || '',
+      pay_by:       adv.pay_by       || 'cash',
+    });
+  }
+
+  async function handleEditAdv(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editAdvId) return;
+    setEditAdvSaving(true);
+    try {
+      const res = await fetch(`/api/advances/${editAdvId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount:       Number(editAdvForm.amount),
+          advance_date: editAdvForm.advance_date || null,
+          detail_type:  editAdvForm.detail_type,
+          notes:        editAdvForm.notes || null,
+          pay_by:       editAdvForm.pay_by,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) { showAlert(data.error || 'Failed.', 'danger'); return; }
+      showAlert('✅ Advance updated.');
+      setEditAdvId(null);
+      loadData();
+    } finally { setEditAdvSaving(false); }
+  }
+
+  async function handleDeleteAdv(id: string) {
+    if (!confirm('Delete this advance record? This cannot be undone.')) return;
+    const res = await fetch(`/api/advances/${id}`, { method: 'DELETE' });
+    if (!res.ok) { const d = await res.json(); showAlert(d.error || 'Failed.', 'danger'); return; }
+    showAlert('Advance deleted.');
+    loadData();
   }
 
   async function uploadAdvSlip(file: File) {
@@ -1609,6 +1663,117 @@ function AdminView() {
                 })}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* ── Advances for selected month ── */}
+      {advances.length > 0 && (
+        <div className="mt-8">
+          <div className="flex items-center gap-3 mb-3">
+            <h3 className="text-sm font-semibold uppercase tracking-wide" style={{ color: '#6B4226' }}>
+              💸 Advances — {filterMonth}
+            </h3>
+            <span className="badge bg-orange-100 text-orange-700">{advances.length} record{advances.length !== 1 ? 's' : ''}</span>
+          </div>
+          <div className="card p-0 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr>
+                    <th className="table-th">Employee</th>
+                    <th className="table-th">Date</th>
+                    <th className="table-th">Type</th>
+                    <th className="table-th">Notes</th>
+                    <th className="table-th">Pay By</th>
+                    <th className="table-th text-right">Amount</th>
+                    <th className="table-th"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {advances.map(adv => (
+                    <tr key={adv.id} className="table-tr">
+                      <td className="table-td font-medium">{adv.employees?.full_name || empList.find(e => e.id === adv.employee_id)?.full_name || '—'}</td>
+                      <td className="table-td text-gray-500 whitespace-nowrap">{adv.advance_date ? new Date(adv.advance_date + 'T00:00:00').toLocaleDateString('en-GB', { day:'2-digit', month:'short' }) : '—'}</td>
+                      <td className="table-td">
+                        <span className="badge bg-orange-100 text-orange-700 capitalize">{adv.detail_type || '—'}</span>
+                      </td>
+                      <td className="table-td text-gray-500">{adv.notes || '—'}</td>
+                      <td className="table-td capitalize">{adv.pay_by || 'cash'}</td>
+                      <td className="table-td text-right font-semibold text-red-600">-{formatRM(Number(adv.amount))}</td>
+                      <td className="table-td">
+                        <div className="flex gap-1 justify-end">
+                          <button className="btn btn-outline btn-sm" onClick={() => openEditAdv(adv)}>✏️</button>
+                          <button className="btn btn-danger btn-sm" onClick={() => handleDeleteAdv(adv.id)}>🗑</button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="bg-gray-50 border-t-2 border-gray-200">
+                    <td className="table-td font-semibold text-gray-600" colSpan={5}>Total Advances</td>
+                    <td className="table-td text-right font-bold text-red-600">
+                      -{formatRM(advances.reduce((s, a) => s + Number(a.amount), 0))}
+                    </td>
+                    <td className="table-td" />
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Edit Advance Modal ── */}
+      {editAdvId && (
+        <div className="modal-overlay" onClick={() => setEditAdvId(null)}>
+          <div className="modal-box max-w-sm" onClick={e => e.stopPropagation()}>
+            <h2 className="modal-title">✏️ Edit Advance</h2>
+            <form onSubmit={handleEditAdv} className="space-y-4">
+              <div>
+                <label className="form-label">Amount (RM) *</label>
+                <input type="number" min="0.01" step="0.01" required className="form-control"
+                  value={editAdvForm.amount}
+                  onChange={e => setEditAdvForm(f => ({ ...f, amount: e.target.value }))} />
+              </div>
+              <div>
+                <label className="form-label">Date</label>
+                <input type="date" className="form-control"
+                  value={editAdvForm.advance_date}
+                  onChange={e => setEditAdvForm(f => ({ ...f, advance_date: e.target.value }))} />
+              </div>
+              <div>
+                <label className="form-label">Type</label>
+                <select className="form-control" value={editAdvForm.detail_type}
+                  onChange={e => setEditAdvForm(f => ({ ...f, detail_type: e.target.value }))}>
+                  {['makan','petrol','permit','flight','medical','accommodation','equipment','other'].map(t => (
+                    <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="form-label">Notes</label>
+                <input className="form-control" placeholder="Optional remark"
+                  value={editAdvForm.notes}
+                  onChange={e => setEditAdvForm(f => ({ ...f, notes: e.target.value }))} />
+              </div>
+              <div>
+                <label className="form-label">Pay By</label>
+                <select className="form-control" value={editAdvForm.pay_by}
+                  onChange={e => setEditAdvForm(f => ({ ...f, pay_by: e.target.value }))}>
+                  <option value="cash">Cash</option>
+                  <option value="bank_transfer">Bank Transfer</option>
+                  <option value="ewallet">E-Wallet</option>
+                </select>
+              </div>
+              <div className="flex gap-3 pt-1">
+                <button type="submit" disabled={editAdvSaving} className="btn btn-primary">
+                  {editAdvSaving ? 'Saving…' : 'Save Changes'}
+                </button>
+                <button type="button" className="btn btn-secondary" onClick={() => setEditAdvId(null)}>Cancel</button>
+              </div>
+            </form>
           </div>
         </div>
       )}
