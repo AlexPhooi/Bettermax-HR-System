@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useRef, useState, useMemo } from 'react';
-import { formatRM, formatDate, getCurrentMonth } from '@/lib/utils';
+import { formatRM, formatDate, getCurrentMonth, RANK_COLORS } from '@/lib/utils';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -22,6 +22,7 @@ interface HistoryRecord {
 interface CalcRow {
   employee_id: string;
   full_name: string;
+  rank: string | null;
   total_days: number;
   total_ot_hours: number;
   daily_rate: number;
@@ -55,8 +56,9 @@ export default function SalaryPage() {
   const [finalizing,  setFinalizing]  = useState(false);
 
   // View
-  const [view,    setView]    = useState<'overview' | 'detail'>('overview');
-  const [section, setSection] = useState<Section>('history');
+  const [view,        setView]        = useState<'overview' | 'detail'>('overview');
+  const [section,     setSection]     = useState<Section>('history');
+  const [overviewTab, setOverviewTab] = useState<'cards' | 'staff'>('cards');
 
   // Filter
   const [filterMonth, setFilterMonth] = useState('all');
@@ -192,14 +194,28 @@ export default function SalaryPage() {
     [pastHistory]);
 
   // ── Derived: current month totals ───────────────────────────────────────────
-  const curGross   = useMemo(() => current?.data.reduce((s, r) => s + r.gross_salary,   0) ?? 0, [current]);
-  const curAdvance = useMemo(() => current?.data.reduce((s, r) => s + r.total_advances, 0) ?? 0, [current]);
-  const curNet     = useMemo(() => current?.data.reduce((s, r) => s + r.net_salary,     0) ?? 0, [current]);
+  const curActiveData = useMemo(() => (current?.data ?? []).filter(r => r.total_days > 0 || r.total_advances > 0), [current]);
+  const curGross   = useMemo(() => curActiveData.reduce((s, r) => s + r.gross_salary,   0), [curActiveData]);
+  const curAdvance = useMemo(() => curActiveData.reduce((s, r) => s + r.total_advances, 0), [curActiveData]);
+  const curNet     = useMemo(() => curActiveData.reduce((s, r) => s + r.net_salary,     0), [curActiveData]);
 
   // ── Distinct past months for filter dropdown ─────────────────────────────────
   const pastMonths = useMemo(() =>
     Array.from(new Set(pastHistory.map(r => r.month))).sort((a, b) => b.localeCompare(a)),
     [pastHistory]);
+
+  // ── Last month data (for Staff Overview tab) ─────────────────────────────────
+  const lastMonth = useMemo(() => {
+    const [y, m] = curMonth.split('-').map(Number);
+    const d = new Date(y, m - 2, 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  }, [curMonth]);
+
+  const lastMonthMap = useMemo(() => {
+    const map: Record<string, HistoryRecord> = {};
+    history.filter(r => r.month === lastMonth).forEach(r => { map[r.employee_id] = r; });
+    return map;
+  }, [history, lastMonth]);
 
   // ── Filtered + sorted rows for detail view ───────────────────────────────────
   const detailRows = useMemo(() => {
@@ -211,8 +227,8 @@ export default function SalaryPage() {
       if (sortBy === 'rank') rows = [...rows].sort((a, b) => Number(b.daily_rate) - Number(a.daily_rate));
       return rows;
     } else {
-      // Current month — sort the calc rows
-      let rows = current?.data ?? [];
+      // Current month — exclude staff with no attendance, then sort
+      let rows = (current?.data ?? []).filter(r => r.total_days > 0 || r.total_advances > 0);
       if (sortBy === 'name') rows = [...rows].sort((a, b) => a.full_name.localeCompare(b.full_name));
       if (sortBy === 'rank') rows = [...rows].sort((a, b) => b.daily_rate - a.daily_rate);
       return rows;
@@ -569,78 +585,212 @@ export default function SalaryPage() {
 
   // ─── OVERVIEW ─────────────────────────────────────────────────────────────────
   return (
-    <div className="p-4 md:p-6 max-w-4xl mx-auto">
+    <div className="p-4 md:p-6 max-w-5xl mx-auto">
       <style>{printStyles}</style>
-      <h1 className="text-2xl font-bold text-primary mb-6">Salary</h1>
+      <h1 className="text-2xl font-bold text-primary mb-5">Salary</h1>
 
       {alertMsg && <div className={`alert alert-${alertType} mb-4`}>{alertMsg}</div>}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-
-        {/* ── History Card ── */}
-        <div className="card p-5 flex flex-col gap-4">
-          <div className="flex items-center justify-between">
-            <div className="font-bold text-primary text-base">📜 History</div>
-            <span className="text-xs text-gray-400">{pastMonths.length} month{pastMonths.length !== 1 ? 's' : ''}</span>
-          </div>
-          <div className="space-y-3">
-            <div className="flex justify-between items-center p-3 rounded-lg" style={{ background: 'rgba(22,163,74,0.07)', border: '1px solid rgba(22,163,74,0.15)' }}>
-              <div>
-                <div className="text-xs text-gray-400 mb-0.5">Total Paid</div>
-                <div className="text-xs text-green-600">Slip uploaded</div>
-              </div>
-              <div className="font-bold text-green-700 text-lg">{formatRM(totalPaid)}</div>
-            </div>
-            <div className="flex justify-between items-center p-3 rounded-lg" style={{ background: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.15)' }}>
-              <div>
-                <div className="text-xs text-gray-400 mb-0.5">Total Unpaid</div>
-                <div className="text-xs text-red-400">No slip yet</div>
-              </div>
-              <div className="font-bold text-danger text-lg">{formatRM(totalUnpaid)}</div>
-            </div>
-          </div>
-          <button className="btn btn-primary w-full mt-auto" onClick={() => openDetail('history')}>
-            Details →
+      {/* ── Tab bar ── */}
+      <div className="flex gap-1 mb-5 border-b border-gray-200">
+        {([
+          ['cards', '📊 Overview'],
+          ['staff', '👥 Staff Overview'],
+        ] as const).map(([tab, label]) => (
+          <button key={tab} type="button"
+            className={`px-4 py-2.5 text-sm font-semibold rounded-t-lg border-b-2 transition-colors ${
+              overviewTab === tab
+                ? 'border-primary text-primary bg-primary/5'
+                : 'border-transparent text-gray-400 hover:text-gray-600'
+            }`}
+            onClick={() => setOverviewTab(tab)}>
+            {label}
           </button>
-        </div>
-
-        {/* ── Current Month Card ── */}
-        <div className="card p-5 flex flex-col gap-4">
-          <div className="flex items-center justify-between">
-            <div className="font-bold text-primary text-base">📅 Current Month</div>
-            <span className="text-xs text-gray-400">{curMonth}</span>
-          </div>
-          <div className="space-y-3">
-            <div className="flex justify-between items-center p-3 rounded-lg" style={{ background: 'rgba(30,58,95,0.05)', border: '1px solid rgba(30,58,95,0.12)' }}>
-              <div>
-                <div className="text-xs text-gray-400 mb-0.5">Total Ongoing</div>
-                <div className="text-xs text-gray-500">Gross salary</div>
-              </div>
-              <div className="font-bold text-primary text-lg">{formatRM(curGross)}</div>
-            </div>
-            <div className="flex justify-between items-center p-3 rounded-lg" style={{ background: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.15)' }}>
-              <div>
-                <div className="text-xs text-gray-400 mb-0.5">Total Advance</div>
-                <div className="text-xs text-red-400">Deductions</div>
-              </div>
-              <div className="font-bold text-danger text-lg">
-                {curAdvance > 0 ? `(${formatRM(curAdvance)})` : formatRM(0)}
-              </div>
-            </div>
-            <div className="flex justify-between items-center p-3 rounded-lg" style={{ background: 'rgba(22,163,74,0.07)', border: '1px solid rgba(22,163,74,0.15)' }}>
-              <div>
-                <div className="text-xs text-gray-400 mb-0.5">Balance</div>
-                <div className="text-xs text-green-600">Net payable</div>
-              </div>
-              <div className="font-bold text-green-700 text-lg">{formatRM(curNet)}</div>
-            </div>
-          </div>
-          <button className="btn btn-primary w-full mt-auto" onClick={() => openDetail('current')}>
-            Details →
-          </button>
-        </div>
-
+        ))}
       </div>
+
+      {/* ── Cards tab ── */}
+      {overviewTab === 'cards' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+
+          {/* History Card */}
+          <div className="card p-5 flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <div className="font-bold text-primary text-base">📜 History</div>
+              <span className="text-xs text-gray-400">{pastMonths.length} month{pastMonths.length !== 1 ? 's' : ''}</span>
+            </div>
+            <div className="space-y-3">
+              <div className="flex justify-between items-center p-3 rounded-lg" style={{ background: 'rgba(22,163,74,0.07)', border: '1px solid rgba(22,163,74,0.15)' }}>
+                <div>
+                  <div className="text-xs text-gray-400 mb-0.5">Total Paid</div>
+                  <div className="text-xs text-green-600">Slip uploaded</div>
+                </div>
+                <div className="font-bold text-green-700 text-lg">{formatRM(totalPaid)}</div>
+              </div>
+              <div className="flex justify-between items-center p-3 rounded-lg" style={{ background: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.15)' }}>
+                <div>
+                  <div className="text-xs text-gray-400 mb-0.5">Total Unpaid</div>
+                  <div className="text-xs text-red-400">No slip yet</div>
+                </div>
+                <div className="font-bold text-danger text-lg">{formatRM(totalUnpaid)}</div>
+              </div>
+            </div>
+            <button className="btn btn-primary w-full mt-auto" onClick={() => openDetail('history')}>
+              Details →
+            </button>
+          </div>
+
+          {/* Current Month Card */}
+          <div className="card p-5 flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <div className="font-bold text-primary text-base">📅 Current Month</div>
+              <span className="text-xs text-gray-400">{curMonth}</span>
+            </div>
+            <div className="space-y-3">
+              <div className="flex justify-between items-center p-3 rounded-lg" style={{ background: 'rgba(30,58,95,0.05)', border: '1px solid rgba(30,58,95,0.12)' }}>
+                <div>
+                  <div className="text-xs text-gray-400 mb-0.5">Total Ongoing</div>
+                  <div className="text-xs text-gray-500">Gross salary</div>
+                </div>
+                <div className="font-bold text-primary text-lg">{formatRM(curGross)}</div>
+              </div>
+              <div className="flex justify-between items-center p-3 rounded-lg" style={{ background: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.15)' }}>
+                <div>
+                  <div className="text-xs text-gray-400 mb-0.5">Total Advance</div>
+                  <div className="text-xs text-red-400">Deductions</div>
+                </div>
+                <div className="font-bold text-danger text-lg">
+                  {curAdvance > 0 ? `(${formatRM(curAdvance)})` : formatRM(0)}
+                </div>
+              </div>
+              <div className="flex justify-between items-center p-3 rounded-lg" style={{ background: 'rgba(22,163,74,0.07)', border: '1px solid rgba(22,163,74,0.15)' }}>
+                <div>
+                  <div className="text-xs text-gray-400 mb-0.5">Balance</div>
+                  <div className="text-xs text-green-600">Net payable</div>
+                </div>
+                <div className="font-bold text-green-700 text-lg">{formatRM(curNet)}</div>
+              </div>
+            </div>
+            <button className="btn btn-primary w-full mt-auto" onClick={() => openDetail('current')}>
+              Details →
+            </button>
+          </div>
+
+        </div>
+      )}
+
+      {/* ── Staff Overview tab ── */}
+      {overviewTab === 'staff' && (() => {
+        const allStaff = current?.data ?? [];
+        const totalThisNet    = allStaff.filter(r => r.total_days > 0).reduce((s, r) => s + r.net_salary, 0);
+        const totalLastNet    = Object.values(lastMonthMap).reduce((s, r) => s + Number(r.net_salary), 0);
+        const totalSiteBonus  = allStaff.reduce((s, r) => s + r.total_site_bonus, 0);
+
+        return (
+          <div className="card p-0 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm" style={{ minWidth: 820 }}>
+                <thead>
+                  <tr style={{ background: '#1e3a5f' }}>
+                    <th className="px-4 py-3 text-left text-xs text-white font-semibold">Name</th>
+                    <th className="px-3 py-3 text-left text-xs text-white font-semibold">Rank</th>
+                    <th className="px-3 py-3 text-right text-xs text-white font-semibold">Rate</th>
+                    <th className="px-3 py-3 text-left text-xs text-white font-semibold" style={{ minWidth: 190 }}>
+                      This Month <span className="opacity-60 font-normal">({curMonth})</span>
+                    </th>
+                    <th className="px-3 py-3 text-left text-xs text-white font-semibold" style={{ minWidth: 160 }}>
+                      Last Month <span className="opacity-60 font-normal">({lastMonth})</span>
+                    </th>
+                    <th className="px-3 py-3 text-right text-xs text-white font-semibold">Site Bonus</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {allStaff
+                    .sort((a, b) => a.full_name.localeCompare(b.full_name))
+                    .map((row, idx) => {
+                    const lastRec = lastMonthMap[row.employee_id];
+                    const hasThisMonth = row.total_days > 0 || row.total_advances > 0;
+
+                    // This month status
+                    let thisStatus: React.ReactNode;
+                    if (curFinalized) {
+                      const rec = curRecordMap[row.employee_id];
+                      if (rec) {
+                        thisStatus = rec.payment_slip_url
+                          ? <span className="badge bg-green-100 text-green-700 text-xs">💰 Paid</span>
+                          : <span className="badge bg-blue-100 text-blue-700 text-xs">✅ Finalized</span>;
+                      } else {
+                        thisStatus = <span className="text-gray-300 text-xs">—</span>;
+                      }
+                    } else if (hasThisMonth) {
+                      thisStatus = <span className="badge bg-yellow-100 text-yellow-700 text-xs">🟡 Not finalized</span>;
+                    } else {
+                      thisStatus = <span className="badge bg-red-50 text-red-400 text-xs">🔴 No attendance</span>;
+                    }
+
+                    // Last month status
+                    let lastContent: React.ReactNode;
+                    if (lastRec) {
+                      lastContent = (
+                        <div>
+                          <div className="font-semibold text-gray-800">{formatRM(Number(lastRec.net_salary))}</div>
+                          <div className="mt-0.5">
+                            {lastRec.payment_slip_url
+                              ? <span className="badge bg-green-100 text-green-700 text-xs">💰 Paid</span>
+                              : <span className="badge bg-blue-100 text-blue-700 text-xs">✅ Finalized</span>}
+                          </div>
+                        </div>
+                      );
+                    } else {
+                      lastContent = <span className="text-gray-300 text-xs">—</span>;
+                    }
+
+                    return (
+                      <tr key={row.employee_id} style={{ background: idx % 2 === 0 ? '#fff' : '#f8fafc', borderBottom: '1px solid #f1f5f9' }}>
+                        <td className="px-4 py-3 font-medium text-gray-800">{row.full_name}</td>
+                        <td className="px-3 py-3">
+                          {row.rank
+                            ? <span className={`badge text-xs ${RANK_COLORS[row.rank] || 'bg-gray-100 text-gray-600'}`}>{row.rank}</span>
+                            : <span className="text-gray-300">—</span>}
+                        </td>
+                        <td className="px-3 py-3 text-right text-gray-600 font-mono text-xs">{formatRM(row.daily_rate)}</td>
+                        <td className="px-3 py-3">
+                          {hasThisMonth ? (
+                            <div>
+                              <div className="font-semibold text-gray-800">
+                                {row.total_days.toFixed(2)}d · {formatRM(row.net_salary)}
+                              </div>
+                              <div className="mt-0.5">{thisStatus}</div>
+                            </div>
+                          ) : (
+                            <div>{thisStatus}</div>
+                          )}
+                        </td>
+                        <td className="px-3 py-3">{lastContent}</td>
+                        <td className="px-3 py-3 text-right">
+                          {row.total_site_bonus > 0
+                            ? <span className="font-semibold text-green-700">{formatRM(row.total_site_bonus)}</span>
+                            : <span className="text-gray-300">—</span>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr style={{ background: '#f0f4f8', borderTop: '2px solid #cbd5e1', fontWeight: 700 }}>
+                    <td className="px-4 py-3 text-sm text-primary" colSpan={3}>TOTAL ({allStaff.filter(r => r.total_days > 0).length} active)</td>
+                    <td className="px-3 py-3 text-sm text-accent">{formatRM(totalThisNet)}</td>
+                    <td className="px-3 py-3 text-sm text-accent">{formatRM(totalLastNet)}</td>
+                    <td className="px-3 py-3 text-right text-sm text-green-700">
+                      {totalSiteBonus > 0 ? formatRM(totalSiteBonus) : '—'}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── Bin ── */}
       <div className="mt-8">

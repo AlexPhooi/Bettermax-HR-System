@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState, useMemo, useRef } from 'react';
 import Modal from '@/components/Modal';
-import { formatRM, getPermitStatus, RANK_RATES, RANK_COLORS } from '@/lib/utils';
+import { formatRM, getPermitStatus, getCurrentMonth, RANK_RATES, RANK_COLORS } from '@/lib/utils';
 import { useRole } from '@/lib/role-context';
 import { useRouter } from 'next/navigation';
 
@@ -27,6 +27,20 @@ interface BinData {
   employees: BinEmployee[];
   attendance: BinAttendance[];
   salary: BinSalary[];
+}
+
+// ── Salary types (for Details → Salary tab) ────────────────────────────────
+interface EmpSalaryRecord {
+  id: string; employee_id: string; month: string;
+  total_days: number; daily_rate: number;
+  base_salary: number; total_site_bonus: number;
+  gross_salary: number; total_advances: number; net_salary: number;
+  payment_slip_url: string | null;
+}
+interface EmpCalcRow {
+  employee_id: string; full_name: string;
+  total_days: number; daily_rate: number;
+  gross_salary: number; total_advances: number; net_salary: number;
 }
 
 // ── Types ──────────────────────────────────────────────────────────────
@@ -182,6 +196,12 @@ export default function StaffPage() {
 
   // Live rank → rate map fetched from DB (overrides hardcoded RANK_RATES)
   const [rankRates, setRankRates] = useState<Record<string, number>>({ ...RANK_RATES });
+
+  // Edit Employee modal — salary tab
+  const [detailTab, setDetailTab] = useState<'info' | 'salary'>('info');
+  const [empSalaryRecords, setEmpSalaryRecords] = useState<EmpSalaryRecord[]>([]);
+  const [empCurrentCalc, setEmpCurrentCalc] = useState<EmpCalcRow | null>(null);
+  const [empSalaryLoading, setEmpSalaryLoading] = useState(false);
 
   // Edit Account modal
   const [showAccModal, setShowAccModal]       = useState(false);
@@ -395,6 +415,9 @@ export default function StaffPage() {
   async function openEditEmp(row: StaffRow) {
     if (!row.employee_id) return;
     setEditEmpId(row.employee_id);
+    setDetailTab('info');
+    setEmpSalaryRecords([]);
+    setEmpCurrentCalc(null);
     setShowEmpModal(true); // open modal immediately (form will populate)
 
     // Fetch fresh employee data directly by ID (avoids stale list data)
@@ -419,6 +442,26 @@ export default function StaffPage() {
       avatar_url:       emp.avatar_url       || '',
       status:           emp.status,
     });
+  }
+
+  async function loadEmpSalary(empId: string) {
+    setEmpSalaryLoading(true);
+    try {
+      const curMonth = getCurrentMonth();
+      const [recRes, calcRes] = await Promise.all([
+        fetch('/api/salary/records').then(r => r.json()),
+        fetch(`/api/salary/calculate?month=${curMonth}`).then(r => r.json()),
+      ]);
+      if (Array.isArray(recRes)) {
+        setEmpSalaryRecords(
+          (recRes as (EmpSalaryRecord & {employee_id: string})[]).filter(r => r.employee_id === empId)
+        );
+      }
+      if (calcRes?.data) {
+        const row = (calcRes.data as EmpCalcRow[]).find(r => r.employee_id === empId);
+        setEmpCurrentCalc(row ?? null);
+      }
+    } finally { setEmpSalaryLoading(false); }
   }
 
   async function handleEmpSubmit(e: React.FormEvent) {
@@ -874,128 +917,246 @@ export default function StaffPage() {
 
       {/* ── Edit Employee Modal ─────────────────────────────────────── */}
       <Modal open={showEmpModal} onClose={() => setShowEmpModal(false)}
-        title="Edit Employee Details" maxWidth="max-w-2xl">
-        <form onSubmit={handleEmpSubmit} className="space-y-5">
+        title="Employee Details" maxWidth="max-w-2xl">
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="form-label">Full Name *</label>
-              <input className="form-control" required value={editEmpForm.full_name}
-                onChange={e => setEditEmpForm(f => ({ ...f, full_name: e.target.value }))} />
-            </div>
-            <div>
-              <label className="form-label">Phone</label>
-              <input className="form-control" value={editEmpForm.phone}
-                onChange={e => setEditEmpForm(f => ({ ...f, phone: e.target.value }))} />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="form-label">Rank *</label>
-              <select className="form-control" required value={editEmpForm.rank}
-                onChange={e => handleRankChange(e.target.value, setEditEmpForm as never)}>
-                <option value="">Select rank…</option>
-                {RANKS.map(r => <option key={r} value={r}>{r}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="form-label">Daily Rate (RM)</label>
-              <input className="form-control bg-gray-50 cursor-not-allowed" readOnly tabIndex={-1} value={editEmpForm.daily_rate} />
-            </div>
-          </div>
-
-          {/* Passport */}
-          <div className="rounded-lg border border-gray-200 p-4">
-            <p className="text-xs font-semibold text-gray-600 mb-3">🛂 Passport</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-2">
-              <div>
-                <label className="form-label">Passport No</label>
-                <input className="form-control" value={editEmpForm.passport_no}
-                  onChange={e => setEditEmpForm(f => ({ ...f, passport_no: e.target.value }))} />
-              </div>
-              <div className="flex flex-col justify-end">
-                <UploadButton empId={editEmpId} docType="passport" currentUrl={editEmpForm.passport_doc_url}
-                  onUploaded={url => setEditEmpForm(f => ({ ...f, passport_doc_url: url }))} />
-              </div>
-            </div>
-            {editEmpForm.passport_doc_url && <DocPreview url={editEmpForm.passport_doc_url} label="Passport" />}
-          </div>
-
-          {/* Permit */}
-          <div className="rounded-lg border border-gray-200 p-4">
-            <p className="text-xs font-semibold text-gray-600 mb-3">📋 Work Permit</p>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-2">
-              <div>
-                <label className="form-label">Permit No</label>
-                <input className="form-control" value={editEmpForm.permit_no}
-                  onChange={e => setEditEmpForm(f => ({ ...f, permit_no: e.target.value }))} />
-              </div>
-              <div>
-                <label className="form-label">Expiry Date</label>
-                <input type="date" className="form-control" value={editEmpForm.permit_expire}
-                  onChange={e => setEditEmpForm(f => ({ ...f, permit_expire: e.target.value }))} />
-              </div>
-              <div className="flex flex-col justify-end">
-                <UploadButton empId={editEmpId} docType="permit" currentUrl={editEmpForm.permit_doc_url}
-                  onUploaded={url => setEditEmpForm(f => ({ ...f, permit_doc_url: url }))} />
-              </div>
-            </div>
-            {editEmpForm.permit_expire && (() => {
-              const days = Math.floor((new Date(editEmpForm.permit_expire).getTime() - Date.now()) / 86400000);
-              if (days < 0) return <p className="text-xs text-danger font-semibold">⚠️ Expired {Math.abs(days)} days ago</p>;
-              if (days <= 60) return <p className="text-xs text-warn font-semibold">⚠️ Expires in {days} day{days !== 1 ? 's' : ''}</p>;
-              return <p className="text-xs text-green-600">✅ Valid for {days} days</p>;
-            })()}
-            {editEmpForm.permit_doc_url && <div className="mt-2"><DocPreview url={editEmpForm.permit_doc_url} label="Permit" /></div>}
-          </div>
-
-          {/* Date of Birth */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="form-label">🎂 Date of Birth</label>
-              <input type="date" className="form-control" value={editEmpForm.date_of_birth}
-                onChange={e => setEditEmpForm(f => ({ ...f, date_of_birth: e.target.value }))} />
-              {editEmpForm.date_of_birth && (() => {
-                const dob = new Date(editEmpForm.date_of_birth);
-                const now = new Date();
-                const age = now.getFullYear() - dob.getFullYear() - (now < new Date(now.getFullYear(), dob.getMonth(), dob.getDate()) ? 1 : 0);
-                const thisYearBday = new Date(now.getFullYear(), dob.getMonth(), dob.getDate());
-                const daysUntil = Math.round((thisYearBday.getTime() - now.getTime()) / 86400000);
-                return (
-                  <p className="text-xs text-gray-500 mt-1">
-                    Age {age} · {daysUntil === 0 ? '🎂 Birthday today!' : daysUntil > 0 ? `${daysUntil}d until birthday` : `${Math.abs(daysUntil)}d since birthday`}
-                  </p>
-                );
-              })()}
-            </div>
-            <div />
-          </div>
-
-          {/* Bank */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="form-label">Bank</label>
-              <select className="form-control" value={editEmpForm.bank_name}
-                onChange={e => setEditEmpForm(f => ({ ...f, bank_name: e.target.value }))}>
-                <option value="">Select bank…</option>
-                {BANKS.map(b => <option key={b} value={b}>{b}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="form-label">Account No</label>
-              <input className="form-control" value={editEmpForm.bank_account}
-                onChange={e => setEditEmpForm(f => ({ ...f, bank_account: e.target.value }))} />
-            </div>
-          </div>
-
-          <div className="flex gap-3 pt-2">
-            <button type="submit" disabled={empSaving} className="btn btn-primary">
-              {empSaving ? 'Saving…' : 'Save Changes'}
+        {/* Tab bar */}
+        <div className="flex gap-1 mb-5 border-b border-gray-200 pb-0 -mt-1">
+          {(['info', 'salary'] as const).map(tab => (
+            <button key={tab} type="button"
+              className={`px-4 py-2 text-sm font-semibold rounded-t-lg border-b-2 transition-colors ${
+                detailTab === tab
+                  ? 'border-primary text-primary bg-primary/5'
+                  : 'border-transparent text-gray-400 hover:text-gray-600'
+              }`}
+              onClick={() => {
+                setDetailTab(tab);
+                if (tab === 'salary' && editEmpId && empSalaryRecords.length === 0 && !empSalaryLoading) {
+                  loadEmpSalary(editEmpId);
+                }
+              }}>
+              {tab === 'info' ? '👤 Details' : '💰 Salary'}
             </button>
-            <button type="button" className="btn btn-secondary" onClick={() => setShowEmpModal(false)}>Cancel</button>
+          ))}
+        </div>
+
+        {/* ── Info tab ── */}
+        {detailTab === 'info' && (
+          <form onSubmit={handleEmpSubmit} className="space-y-5">
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="form-label">Full Name *</label>
+                <input className="form-control" required value={editEmpForm.full_name}
+                  onChange={e => setEditEmpForm(f => ({ ...f, full_name: e.target.value }))} />
+              </div>
+              <div>
+                <label className="form-label">Phone</label>
+                <input className="form-control" value={editEmpForm.phone}
+                  onChange={e => setEditEmpForm(f => ({ ...f, phone: e.target.value }))} />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="form-label">Rank *</label>
+                <select className="form-control" required value={editEmpForm.rank}
+                  onChange={e => handleRankChange(e.target.value, setEditEmpForm as never)}>
+                  <option value="">Select rank…</option>
+                  {RANKS.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="form-label">Daily Rate (RM)</label>
+                <input className="form-control bg-gray-50 cursor-not-allowed" readOnly tabIndex={-1} value={editEmpForm.daily_rate} />
+              </div>
+            </div>
+
+            {/* Passport */}
+            <div className="rounded-lg border border-gray-200 p-4">
+              <p className="text-xs font-semibold text-gray-600 mb-3">🛂 Passport</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-2">
+                <div>
+                  <label className="form-label">Passport No</label>
+                  <input className="form-control" value={editEmpForm.passport_no}
+                    onChange={e => setEditEmpForm(f => ({ ...f, passport_no: e.target.value }))} />
+                </div>
+                <div className="flex flex-col justify-end">
+                  <UploadButton empId={editEmpId} docType="passport" currentUrl={editEmpForm.passport_doc_url}
+                    onUploaded={url => setEditEmpForm(f => ({ ...f, passport_doc_url: url }))} />
+                </div>
+              </div>
+              {editEmpForm.passport_doc_url && <DocPreview url={editEmpForm.passport_doc_url} label="Passport" />}
+            </div>
+
+            {/* Permit */}
+            <div className="rounded-lg border border-gray-200 p-4">
+              <p className="text-xs font-semibold text-gray-600 mb-3">📋 Work Permit</p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-2">
+                <div>
+                  <label className="form-label">Permit No</label>
+                  <input className="form-control" value={editEmpForm.permit_no}
+                    onChange={e => setEditEmpForm(f => ({ ...f, permit_no: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="form-label">Expiry Date</label>
+                  <input type="date" className="form-control" value={editEmpForm.permit_expire}
+                    onChange={e => setEditEmpForm(f => ({ ...f, permit_expire: e.target.value }))} />
+                </div>
+                <div className="flex flex-col justify-end">
+                  <UploadButton empId={editEmpId} docType="permit" currentUrl={editEmpForm.permit_doc_url}
+                    onUploaded={url => setEditEmpForm(f => ({ ...f, permit_doc_url: url }))} />
+                </div>
+              </div>
+              {editEmpForm.permit_expire && (() => {
+                const days = Math.floor((new Date(editEmpForm.permit_expire).getTime() - Date.now()) / 86400000);
+                if (days < 0) return <p className="text-xs text-danger font-semibold">⚠️ Expired {Math.abs(days)} days ago</p>;
+                if (days <= 60) return <p className="text-xs text-warn font-semibold">⚠️ Expires in {days} day{days !== 1 ? 's' : ''}</p>;
+                return <p className="text-xs text-green-600">✅ Valid for {days} days</p>;
+              })()}
+              {editEmpForm.permit_doc_url && <div className="mt-2"><DocPreview url={editEmpForm.permit_doc_url} label="Permit" /></div>}
+            </div>
+
+            {/* Date of Birth */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="form-label">🎂 Date of Birth</label>
+                <input type="date" className="form-control" value={editEmpForm.date_of_birth}
+                  onChange={e => setEditEmpForm(f => ({ ...f, date_of_birth: e.target.value }))} />
+                {editEmpForm.date_of_birth && (() => {
+                  const dob = new Date(editEmpForm.date_of_birth);
+                  const now = new Date();
+                  const age = now.getFullYear() - dob.getFullYear() - (now < new Date(now.getFullYear(), dob.getMonth(), dob.getDate()) ? 1 : 0);
+                  const thisYearBday = new Date(now.getFullYear(), dob.getMonth(), dob.getDate());
+                  const daysUntil = Math.round((thisYearBday.getTime() - now.getTime()) / 86400000);
+                  return (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Age {age} · {daysUntil === 0 ? '🎂 Birthday today!' : daysUntil > 0 ? `${daysUntil}d until birthday` : `${Math.abs(daysUntil)}d since birthday`}
+                    </p>
+                  );
+                })()}
+              </div>
+              <div />
+            </div>
+
+            {/* Bank */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="form-label">Bank</label>
+                <select className="form-control" value={editEmpForm.bank_name}
+                  onChange={e => setEditEmpForm(f => ({ ...f, bank_name: e.target.value }))}>
+                  <option value="">Select bank…</option>
+                  {BANKS.map(b => <option key={b} value={b}>{b}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="form-label">Account No</label>
+                <input className="form-control" value={editEmpForm.bank_account}
+                  onChange={e => setEditEmpForm(f => ({ ...f, bank_account: e.target.value }))} />
+              </div>
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button type="submit" disabled={empSaving} className="btn btn-primary">
+                {empSaving ? 'Saving…' : 'Save Changes'}
+              </button>
+              <button type="button" className="btn btn-secondary" onClick={() => setShowEmpModal(false)}>Cancel</button>
+            </div>
+          </form>
+        )}
+
+        {/* ── Salary tab ── */}
+        {detailTab === 'salary' && (
+          <div>
+            {empSalaryLoading ? (
+              <div className="py-10 text-center text-gray-400">Loading salary data…</div>
+            ) : (
+              <>
+                {/* Current month projected */}
+                <div className="rounded-lg p-4 mb-4" style={{ background: 'rgba(30,58,95,0.05)', border: '1px solid rgba(30,58,95,0.12)' }}>
+                  <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
+                    {getCurrentMonth()} — Current Month Projection
+                  </div>
+                  {empCurrentCalc && empCurrentCalc.total_days > 0 ? (
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                      <div>
+                        <div className="text-xs text-gray-400 mb-0.5">Days 工</div>
+                        <div className="font-bold text-primary">{empCurrentCalc.total_days.toFixed(2)}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-gray-400 mb-0.5">Daily Rate</div>
+                        <div className="font-bold text-gray-700">{formatRM(empCurrentCalc.daily_rate)}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-gray-400 mb-0.5">Gross</div>
+                        <div className="font-bold text-accent">{formatRM(empCurrentCalc.gross_salary)}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-gray-400 mb-0.5">Net (proj.)</div>
+                        <div className={`font-bold ${empCurrentCalc.net_salary < 0 ? 'text-danger' : 'text-green-700'}`}>
+                          {formatRM(empCurrentCalc.net_salary)}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-sm text-gray-400 text-center py-2">No attendance recorded this month yet.</div>
+                  )}
+                </div>
+
+                {/* History table */}
+                <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Finalized History</div>
+                {empSalaryRecords.length === 0 ? (
+                  <div className="py-8 text-center text-gray-400 text-sm rounded-lg border border-dashed border-gray-200">
+                    No finalized salary records yet.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto rounded-lg border border-gray-200">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr style={{ background: '#1e3a5f' }}>
+                          <th className="px-3 py-2 text-left text-xs text-white font-semibold">Month</th>
+                          <th className="px-3 py-2 text-right text-xs text-white font-semibold">Days</th>
+                          <th className="px-3 py-2 text-right text-xs text-white font-semibold">Gross</th>
+                          <th className="px-3 py-2 text-right text-xs text-white font-semibold">Advance</th>
+                          <th className="px-3 py-2 text-right text-xs text-white font-semibold">Net</th>
+                          <th className="px-3 py-2 text-center text-xs text-white font-semibold">Slip</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {empSalaryRecords
+                          .sort((a, b) => b.month.localeCompare(a.month))
+                          .map((rec, idx) => (
+                          <tr key={rec.id} style={{ background: idx % 2 === 0 ? '#fff' : '#f8fafc', borderBottom: '1px solid #f1f5f9' }}>
+                            <td className="px-3 py-2 font-mono text-xs text-gray-600">{rec.month}</td>
+                            <td className="px-3 py-2 text-right font-semibold text-primary">{Number(rec.total_days).toFixed(2)}</td>
+                            <td className="px-3 py-2 text-right text-accent">{formatRM(Number(rec.gross_salary))}</td>
+                            <td className="px-3 py-2 text-right">
+                              {Number(rec.total_advances) > 0
+                                ? <span className="text-danger">({formatRM(Number(rec.total_advances))})</span>
+                                : <span className="text-gray-300">-</span>}
+                            </td>
+                            <td className={`px-3 py-2 text-right font-bold ${Number(rec.net_salary) < 0 ? 'text-danger' : 'text-green-700'}`}>
+                              {formatRM(Number(rec.net_salary))}
+                            </td>
+                            <td className="px-3 py-2 text-center">
+                              {rec.payment_slip_url
+                                ? <a href={rec.payment_slip_url} target="_blank" rel="noopener noreferrer"
+                                    className="text-xs text-blue-600 hover:underline">💰 Paid</a>
+                                : <span className="text-xs text-blue-500">✅ Done</span>}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                <div className="mt-4 flex justify-end">
+                  <button type="button" className="btn btn-secondary text-sm" onClick={() => setShowEmpModal(false)}>Close</button>
+                </div>
+              </>
+            )}
           </div>
-        </form>
+        )}
       </Modal>
 
       {/* ── Edit Account Modal ──────────────────────────────────────── */}

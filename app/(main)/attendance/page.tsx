@@ -1307,7 +1307,6 @@ function AdminView() {
                   <th className="table-th text-right">Total Gong 工</th>
                   <th className="table-th text-right">Total Salary</th>
                   <th className="table-th text-right">Site Bonus</th>
-                  <th className="table-th text-right">Advance</th>
                   <th className="table-th">Status</th>
                   <th className="table-th"></th>
                 </tr>
@@ -1337,11 +1336,6 @@ function AdminView() {
                       <td className="table-td text-right">
                         {grp.totalSiteBonus > 0
                           ? <span className="badge bg-green-100 text-green-700">+{formatRM(grp.totalSiteBonus)}</span>
-                          : <span className="text-gray-400">—</span>}
-                      </td>
-                      <td className="table-td text-right">
-                        {grp.totalAdvance > 0
-                          ? <span className="badge bg-red-100 text-red-700">-{formatRM(grp.totalAdvance)}</span>
                           : <span className="text-gray-400">—</span>}
                       </td>
                       <td className="table-td"><StatusBadge status={grp.status} /></td>
@@ -1443,7 +1437,6 @@ function AdminView() {
                                       <th className="table-th text-xs text-right">Gong 工</th>
                                       <th className="table-th text-xs text-right">Salary</th>
                                       <th className="table-th text-xs text-right">Site Bonus</th>
-                                      <th className="table-th text-xs text-right">Advance</th>
                                       <th className="table-th text-xs">Status</th>
                                       <th className="table-th text-xs"></th>
                                     </tr>
@@ -1481,11 +1474,6 @@ function AdminView() {
                                               ? <span className="text-green-700 font-medium">+{formatRM(Number(rec.site_bonus))}</span>
                                               : <span className="text-gray-400">—</span>}
                                           </td>
-                                          <td className="table-td text-right">
-                                            {adv > 0
-                                              ? <span className="text-red-600 font-medium">-{formatRM(adv)}</span>
-                                              : <span className="text-gray-400">—</span>}
-                                          </td>
                                           <td className="table-td"><StatusBadge status={rec.status} /></td>
                                           <td className="table-td">
                                             <div className="flex gap-1">
@@ -1503,7 +1491,6 @@ function AdminView() {
                                       <td className="table-td text-right text-primary">{grp.totalGong.toFixed(2)} 工</td>
                                       <td className="table-td text-right text-accent">{formatRM(grp.totalSalary)}</td>
                                       <td className="table-td text-right text-green-700">{grp.totalSiteBonus > 0 ? `+${formatRM(grp.totalSiteBonus)}` : '—'}</td>
-                                      <td className="table-td text-right text-red-600">{grp.totalAdvance > 0 ? `-${formatRM(grp.totalAdvance)}` : '—'}</td>
                                       <td className="table-td" colSpan={2}>
                                         {(() => {
                                           const anyDirty = grp.records.some(rec => {

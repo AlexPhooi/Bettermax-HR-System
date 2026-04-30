@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
   const end = new Date(+y, +m, 0).toISOString().split('T')[0];
 
   const [empRes, attRes, advRes] = await Promise.all([
-    supabase.from('employees').select('id, full_name, daily_rate, status, bank_name, bank_account, site_bonus_balance').eq('status', 'active').eq('is_demo', false),
+    supabase.from('employees').select('id, full_name, daily_rate, rank, status, bank_name, bank_account, site_bonus_balance').eq('status', 'active').eq('is_demo', false),
     supabase.from('hr_attendance').select('employee_id, days_worked, ot_hours, site_bonus').gte('work_date', start).lte('work_date', end).eq('status', 'approved').is('deleted_at', null),
     supabase.from('advances').select('employee_id, amount').eq('month', month),
   ]);
@@ -37,6 +37,7 @@ export async function GET(req: NextRequest) {
     return {
       employee_id:      emp.id,
       full_name:        emp.full_name,
+      rank:             (emp as {rank?: string}).rank || null,
       total_days:       Math.round(total_days * 10000) / 10000,
       total_ot_hours:   Math.round(total_ot_hours * 10) / 10,
       daily_rate:       Number(emp.daily_rate),
