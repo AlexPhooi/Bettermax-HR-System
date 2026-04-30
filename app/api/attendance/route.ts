@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getUser } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 import { calcHoursAndDays } from '@/lib/utils';
+import { calcHoursFromTimes, DEFAULT_SCHEDULE } from '@/lib/work-schedule';
 
 export async function GET(req: NextRequest) {
   const user = await getUser(req);
@@ -111,13 +112,19 @@ export async function POST(req: NextRequest) {
   let clock_in: string | null  = null;
   let clock_out: string | null = null;
 
-  if (body.work_hours) {
-    // New leader flow: direct hours entry
+  if (body.check_in_time && body.check_out_time) {
+    // Admin time-picker flow: schedule-aware calculation
+    const calc = calcHoursFromTimes(body.check_in_time, body.check_out_time, DEFAULT_SCHEDULE);
+    hours_worked = calc.work_hours + calc.ot_hours;
+    ot_hours     = calc.ot_hours;
+    days_worked  = calc.days_worked;
+  } else if (body.work_hours) {
+    // Leader flow: direct hours entry
     const work_hours = Number(body.work_hours);
     hours_worked = work_hours + ot_hours;
     days_worked  = hours_worked / 8;
   } else if (body.clock_in && body.clock_out) {
-    // Legacy admin flow: calculate from clock times
+    // Legacy clock-time flow
     const calc = calcHoursAndDays(body.work_date, body.clock_in, body.clock_out);
     if (!calc) return NextResponse.json({ error: 'Clock out must be after clock in.' }, { status: 400 });
     hours_worked = calc.hours;
@@ -125,7 +132,7 @@ export async function POST(req: NextRequest) {
     clock_in     = calc.clock_in;
     clock_out    = calc.clock_out;
   } else {
-    return NextResponse.json({ error: 'Provide work_hours or clock_in/clock_out.' }, { status: 400 });
+    return NextResponse.json({ error: 'Provide check_in_time/check_out_time or work_hours.' }, { status: 400 });
   }
 
   // Detect rework
@@ -155,6 +162,8 @@ export async function POST(req: NextRequest) {
       employee_id,
       project_id:           body.project_id || null,
       work_date:            body.work_date,
+      check_in_time:        body.check_in_time  || null,
+      check_out_time:       body.check_out_time || null,
       clock_in,
       clock_out,
       hours_worked,

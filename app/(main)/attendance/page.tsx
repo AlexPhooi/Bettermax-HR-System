@@ -906,7 +906,7 @@ function LeaderView() {
 // ADMIN VIEW — grouped by Date + Project, expandable Details
 // ══════════════════════════════════════════════════════════════════════
 const EMPTY_ADD = {
-  work_date: today(), project_id: '', work_hours: 8, ot_hours: 0,
+  work_date: today(), project_id: '', check_in_time: '08:00', check_out_time: '18:00',
   site_clean: false, notes: '', status: 'approved',
 };
 
@@ -1205,13 +1205,13 @@ function AdminView() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           employee_ids: Array.from(addSelectedIds),
-          work_date:   addForm.work_date,
-          project_id:  addForm.project_id || null,
-          work_hours:  addForm.work_hours,
-          ot_hours:    addForm.ot_hours,
-          site_clean:  addForm.site_clean,
-          notes:       addForm.notes,
-          status:      addForm.status,
+          work_date:      addForm.work_date,
+          project_id:     addForm.project_id || null,
+          check_in_time:  addForm.check_in_time,
+          check_out_time: addForm.check_out_time,
+          site_clean:     addForm.site_clean,
+          notes:          addForm.notes,
+          status:         addForm.status,
         }),
       });
       const data = await res.json();
@@ -1538,12 +1538,12 @@ function AdminView() {
                                     {grp.records.map(rec => {
                                       const adv    = advanceMap[`${rec.employee_id}_${rec.work_date}`] || 0;
                                       const edit   = recEdits[rec.id];
-                                      // Real-time gong from edits if available, else from DB
-                                      const liveGong = edit
-                                        ? calcHoursFromTimes(edit.check_in_time, edit.check_out_time, adminSchedule).days_worked
+                                      // Only recalculate when admin has actually changed the times
+                                      const isDirty = !!edit && (edit.check_in_time !== (rec.check_in_time || adminSchedule.default_start) || edit.check_out_time !== (rec.check_out_time || adminSchedule.work_end));
+                                      const liveGong = isDirty
+                                        ? calcHoursFromTimes(edit!.check_in_time, edit!.check_out_time, adminSchedule).days_worked
                                         : Number(rec.days_worked);
                                       const sal    = liveGong * Number(rec.employees?.daily_rate || 0);
-                                      const isDirty = edit && (edit.check_in_time !== (rec.check_in_time || adminSchedule.default_start) || edit.check_out_time !== (rec.check_out_time || adminSchedule.work_end));
                                       const isSavingThis = savingRecs.has(rec.id);
                                       return (
                                         <tr key={rec.id} className={`border-t border-gray-100 hover:bg-white transition-colors ${isDirty ? 'bg-blue-50/40' : ''}`}>
@@ -1931,26 +1931,22 @@ function AdminView() {
                 </div>
               </div>
 
-              {/* Hours */}
+              {/* Times */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div>
-                  <label className="form-label">Work Hours *</label>
-                  <select className="form-control" value={addForm.work_hours}
-                    onChange={e => setAddForm(f => ({ ...f, work_hours: Number(e.target.value) }))}>
-                    {[1,2,3,4,5,6,7,8,9,10,11,12].map(h => <option key={h} value={h}>{h}h</option>)}
-                  </select>
+                  <label className="form-label">Check In *</label>
+                  <input type="time" className="form-control" value={addForm.check_in_time}
+                    onChange={e => setAddForm(f => ({ ...f, check_in_time: e.target.value }))} />
                 </div>
                 <div>
-                  <label className="form-label">OT Hours</label>
-                  <select className="form-control" value={addForm.ot_hours}
-                    onChange={e => setAddForm(f => ({ ...f, ot_hours: Number(e.target.value) }))}>
-                    {[0,1,2,3,4,5,6,7,8].map(h => <option key={h} value={h}>+{h}h</option>)}
-                  </select>
+                  <label className="form-label">Check Out *</label>
+                  <input type="time" className="form-control" value={addForm.check_out_time}
+                    onChange={e => setAddForm(f => ({ ...f, check_out_time: e.target.value }))} />
                 </div>
                 <div className="flex flex-col justify-end">
                   <p className="form-label">Total 工</p>
                   <div className="form-control bg-gray-50 font-bold text-primary text-center">
-                    {((addForm.work_hours + addForm.ot_hours) / 8).toFixed(2)} 工
+                    {calcHoursFromTimes(addForm.check_in_time, addForm.check_out_time, adminSchedule).days_worked.toFixed(2)} 工
                   </div>
                 </div>
                 <div className="flex flex-col justify-end">
@@ -1971,7 +1967,7 @@ function AdminView() {
                 <div>
                   <p className="text-sm font-semibold text-gray-800">🧹 Site was clean</p>
                   <p className="text-xs text-gray-500">+RM10 per worker if ≥ 8h worked</p>
-                  {addForm.site_clean && addForm.work_hours + addForm.ot_hours >= 8 && (
+                  {addForm.site_clean && calcHoursFromTimes(addForm.check_in_time, addForm.check_out_time, adminSchedule).days_worked >= 1 && (
                     <p className="text-xs text-green-700 font-semibold mt-0.5">
                       +RM10 × {addSelectedIds.size} = +RM{(addSelectedIds.size * 10).toFixed(2)}
                     </p>
