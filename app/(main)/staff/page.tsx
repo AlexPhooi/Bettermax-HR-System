@@ -39,6 +39,7 @@ interface EmpData {
   avatar_url: string | null;
   date_of_birth: string | null;
   status: string;
+  is_demo: boolean;
 }
 interface UserRow {
   id: string; username: string; role: string; active: boolean;
@@ -58,6 +59,7 @@ interface StaffRow {
   permit_expire: string | null;
   date_of_birth: string | null;
   emp_status: string | null;
+  is_demo:    boolean;
 }
 
 // ── Constants ──────────────────────────────────────────────────────────
@@ -266,6 +268,7 @@ export default function StaffPage() {
       permit_expire: u.employees?.permit_expire ?? null,
       date_of_birth: u.employees?.date_of_birth ?? null,
       emp_status:   u.employees?.status ?? null,
+      is_demo:      u.employees?.is_demo ?? false,
     }));
   }, [users]);
 
@@ -610,7 +613,10 @@ export default function StaffPage() {
                     <tr key={row.user_id} className={`table-tr ${!isActive ? 'opacity-60' : ''}`}>
                       {/* Name */}
                       <td className="table-td font-medium">
-                        {row.full_name || <span className="text-gray-400 italic">No employee record</span>}
+                        <span className="flex items-center gap-2">
+                          {row.full_name || <span className="text-gray-400 italic">No employee record</span>}
+                          {row.is_demo && <span className="badge bg-gray-100 text-gray-400 border border-gray-300 text-xs font-normal">Demo</span>}
+                        </span>
                       </td>
 
                       {/* Role */}
