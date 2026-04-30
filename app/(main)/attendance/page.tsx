@@ -1149,6 +1149,12 @@ function AdminView() {
         })
       ));
       showAlert(`✅ Times saved for ${dirtyRecs.length} worker${dirtyRecs.length > 1 ? 's' : ''}.`);
+      // Clear edits for this group so Save All button disappears immediately
+      setRecEdits(prev => {
+        const n = { ...prev };
+        dirtyRecs.forEach(r => { delete n[r.id]; });
+        return n;
+      });
       setEditHistory(prev => { const n = { ...prev }; delete n[grpKey]; return n; });
       loadData();
     } finally {
@@ -1623,14 +1629,23 @@ function AdminView() {
                                             return !!edit && (edit.check_in_time !== (rec.check_in_time || adminSchedule.default_start) || edit.check_out_time !== (rec.check_out_time || adminSchedule.work_end));
                                           });
                                           const isSavingAny = grp.records.some(r => savingRecs.has(r.id));
-                                          return anyDirty ? (
-                                            <button
-                                              className="btn btn-sm bg-blue-600 hover:bg-blue-700 text-white text-xs w-full"
-                                              disabled={isSavingAny}
-                                              onClick={() => saveAllInGroup(grp)}>
-                                              {isSavingAny ? 'Saving…' : '💾 Save All'}
-                                            </button>
-                                          ) : null;
+                                          return (
+                                            <div className="flex gap-2">
+                                              {anyDirty && (
+                                                <button
+                                                  className="btn btn-sm bg-blue-600 hover:bg-blue-700 text-white text-xs flex-1"
+                                                  disabled={isSavingAny}
+                                                  onClick={() => saveAllInGroup(grp)}>
+                                                  {isSavingAny ? 'Saving…' : '💾 Save All'}
+                                                </button>
+                                              )}
+                                              <button
+                                                className="btn btn-sm btn-outline text-xs flex-1"
+                                                onClick={() => setExpanded(prev => { const n = new Set(prev); n.delete(grp.key); return n; })}>
+                                                ▲ Hide
+                                              </button>
+                                            </div>
+                                          );
                                         })()}
                                       </td>
                                     </tr>
