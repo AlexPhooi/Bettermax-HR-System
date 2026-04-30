@@ -315,9 +315,9 @@ export default function SalaryPage() {
           <button className="btn btn-secondary text-sm py-1.5 px-3" onClick={() => setView('overview')}>← Back</button>
           <h1 className="text-xl font-bold text-primary">Salary — {label}</h1>
           <div className="ml-auto flex gap-2">
-            {!isHistory && !curFinalized && (
-              <button className="btn btn-success text-sm" onClick={finalize} disabled={finalizing}>
-                {finalizing ? 'Finalizing…' : '✓ Finalize'}
+            {!isHistory && (
+              <button className={`btn text-sm ${curFinalized ? 'btn-secondary' : 'btn-success'}`} onClick={finalize} disabled={finalizing}>
+                {finalizing ? 'Updating…' : curFinalized ? '🔄 Update (add missing)' : '✓ Finalize'}
               </button>
             )}
             {!isHistory && curFinalized && (

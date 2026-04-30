@@ -10,12 +10,22 @@ export async function POST(req: NextRequest) {
   const { month, records } = await req.json();
   if (!month || !records?.length) return NextResponse.json({ error: 'Month and records required.' }, { status: 400 });
 
-  // Delete existing records for the month (hard delete on re-finalize)
-  await supabase.from('salary_records').delete().eq('month', month);
+  // Fetch existing records — preserve any that already have a payment slip uploaded
+  const { data: existing } = await supabase
+    .from('salary_records').select('employee_id, payment_slip_url').eq('month', month);
+  const paidIds = new Set((existing || []).filter(r => r.payment_slip_url).map(r => r.employee_id));
+
+  // Delete only records WITHOUT a payment slip (safe to overwrite)
+  await supabase.from('salary_records').delete().eq('month', month).is('payment_slip_url', null);
+
+  // Insert all records except those already paid (slip uploaded)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const toInsert = records.filter((r: any) => !paidIds.has(r.employee_id));
+  if (!toInsert.length) return NextResponse.json({ success: true, data: [] });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await supabase.from('salary_records').insert(
-    records.map((r: any) => ({
+    toInsert.map((r: any) => ({
       employee_id:      r.employee_id,
       month,
       total_days:       r.total_days,
