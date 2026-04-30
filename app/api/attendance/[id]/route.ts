@@ -42,10 +42,18 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   return NextResponse.json(data);
 }
 
-// PUT: edit a record
+// PUT: edit a record (manager or original submitter only)
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
   const user = await getUser(req);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  // Only managers or the editor who submitted this record can edit it
+  if (!isManager(user.role)) {
+    const { data: existing } = await supabase
+      .from('hr_attendance').select('submitted_by').eq('id', params.id).single();
+    if (!existing || existing.submitted_by !== user.id)
+      return NextResponse.json({ error: 'Forbidden — you can only edit records you submitted.' }, { status: 403 });
+  }
 
   const body = await req.json();
   let hours_worked: number | undefined;

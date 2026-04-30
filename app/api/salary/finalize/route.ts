@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getUser } from '@/lib/auth';
+import { getUser, isManager } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 
 export async function POST(req: NextRequest) {
-  if (!await getUser(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const user = await getUser(req);
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!isManager(user.role)) return NextResponse.json({ error: 'Admin/Owner only.' }, { status: 403 });
+
   const { month, records } = await req.json();
   if (!month || !records?.length) return NextResponse.json({ error: 'Month and records required.' }, { status: 400 });
 
@@ -27,23 +30,8 @@ export async function POST(req: NextRequest) {
   ).select();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  // Update each employee's site_bonus_balance by adding this month's site bonus
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const bonusUpdates = records.filter((r: any) => Number(r.total_site_bonus) > 0);
-  for (const r of bonusUpdates) {
-    // Increment balance: fetch current then update
-    const { data: emp } = await supabase
-      .from('employees')
-      .select('site_bonus_balance')
-      .eq('id', r.employee_id)
-      .single();
-    const current = Number(emp?.site_bonus_balance || 0);
-    const newBalance = Math.round((current + Number(r.total_site_bonus)) * 100) / 100;
-    await supabase
-      .from('employees')
-      .update({ site_bonus_balance: newBalance })
-      .eq('id', r.employee_id);
-  }
+  // NOTE: site_bonus_balance is already updated in the savings ledger at the time each
+  // attendance record is approved (via /api/attendance/group). Do NOT double-credit here.
 
   return NextResponse.json({ success: true, data });
 }

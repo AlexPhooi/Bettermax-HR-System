@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getUser } from '@/lib/auth';
+import { getUser, isManager } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 
 function getPaymentDue(month: string) {
@@ -8,7 +8,9 @@ function getPaymentDue(month: string) {
 }
 
 export async function GET(req: NextRequest) {
-  if (!await getUser(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const user = await getUser(req);
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!isManager(user.role)) return NextResponse.json({ error: 'Admin/Owner only.' }, { status: 403 });
   const month = req.nextUrl.searchParams.get('month');
   if (!month) return NextResponse.json({ error: 'Month required.' }, { status: 400 });
   const [y, m] = month.split('-');

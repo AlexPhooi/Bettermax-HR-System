@@ -3,11 +3,22 @@ import { getUser, isManager } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 
 export async function GET(req: NextRequest) {
-  if (!await getUser(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const user = await getUser(req);
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
   const sp = req.nextUrl.searchParams;
   let query = supabase.from('advances').select('*, employees(full_name)').order('advance_date', { ascending: false });
   if (sp.get('month'))       query = query.eq('month',       sp.get('month')!);
-  if (sp.get('employee_id')) query = query.eq('employee_id', sp.get('employee_id')!);
+
+  // Non-managers (viewer/editor/approval) can only see their own employee's advances
+  if (!isManager(user.role)) {
+    if (!user.employee_id) return NextResponse.json([]);
+    query = query.eq('employee_id', user.employee_id);
+  } else {
+    // Managers can filter by employee_id if provided
+    if (sp.get('employee_id')) query = query.eq('employee_id', sp.get('employee_id')!);
+  }
+
   const { data, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(data);

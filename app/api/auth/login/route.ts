@@ -8,7 +8,8 @@ export async function POST(req: NextRequest) {
   if (!username?.trim() || !password)
     return NextResponse.json({ error: 'Username and password required.' }, { status: 400 });
 
-  const { data: users } = await supabase.from('users').select('*').eq('username', username.trim()).limit(1);
+  const { data: users } = await supabase.from('users').select('*')
+    .eq('username', username.trim()).is('deleted_at', null).limit(1);
   const user = users?.[0];
   if (!user || !(await bcrypt.compare(password, user.password_hash)))
     return NextResponse.json({ error: 'Invalid username or password.' }, { status: 401 });

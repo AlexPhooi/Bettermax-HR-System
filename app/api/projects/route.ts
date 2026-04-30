@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getUser } from '@/lib/auth';
+import { getUser, isManager } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 
 export async function GET(req: NextRequest) {
@@ -13,7 +13,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  if (!await getUser(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const user = await getUser(req);
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!isManager(user.role)) return NextResponse.json({ error: 'Admin/Owner only.' }, { status: 403 });
   const body = await req.json();
   if (!body.name?.trim()) return NextResponse.json({ error: 'Project name is required.' }, { status: 400 });
   const { data, error } = await supabase.from('projects').insert({
