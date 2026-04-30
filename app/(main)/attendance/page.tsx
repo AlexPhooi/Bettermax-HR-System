@@ -108,18 +108,16 @@ function getPhotoTime(url: string | null): string {
 }
 
 function PhotoCard({ url, label }: { url: string | null; label: string }) {
+  if (!url) return null;
   const time = getPhotoTime(url);
   return (
     <div className="flex flex-col items-center gap-1.5 min-w-[80px]">
       <p className="text-xs text-gray-500 font-medium">{label}</p>
-      {url
-        ? <a href={url} target="_blank" rel="noopener noreferrer">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={url} alt={label} className="w-20 h-20 object-cover rounded-lg border border-gray-200 hover:opacity-80 transition" />
-          </a>
-        : <div className="w-20 h-20 rounded-lg border-2 border-dashed border-gray-200 flex items-center justify-center text-gray-300 text-2xl">📷</div>
-      }
-      <p className="text-[10px] text-gray-400">{time || (url ? '—' : 'No photo')}</p>
+      <a href={url} target="_blank" rel="noopener noreferrer">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={url} alt={label} className="w-20 h-20 object-cover rounded-lg border border-gray-200 hover:opacity-80 transition" />
+      </a>
+      {time && <p className="text-[10px] text-gray-400">{time}</p>}
     </div>
   );
 }
@@ -1485,18 +1483,22 @@ function AdminView() {
                         <td colSpan={9} className="p-0 border-t border-gray-100">
                           <div className="bg-gray-50 px-6 py-5 space-y-5">
 
-                            {/* Photos strip */}
-                            <div>
-                              <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">Photos</p>
-                              <div className="flex gap-6 flex-wrap items-start">
-                                <PhotoCard url={grp.check_in_photo_url}   label="Check-In" />
-                                <PhotoCard url={grp.check_out_photo_url}  label="Check-Out" />
-                                <div className="w-px h-24 bg-gray-200 self-center" />
-                                <PhotoCard url={grp.site_photo_front_url} label="Site — Front" />
-                                <PhotoCard url={grp.site_photo_back_url}  label="Site — Back" />
-                                <PhotoCard url={grp.site_photo_store_url} label="Site — Store" />
+                            {/* Photos strip — only shown if at least one photo exists */}
+                            {(grp.check_in_photo_url || grp.check_out_photo_url || grp.site_photo_front_url || grp.site_photo_back_url || grp.site_photo_store_url) && (
+                              <div>
+                                <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">Photos</p>
+                                <div className="flex gap-6 flex-wrap items-start">
+                                  <PhotoCard url={grp.check_in_photo_url}   label="Check-In" />
+                                  <PhotoCard url={grp.check_out_photo_url}  label="Check-Out" />
+                                  {(grp.check_in_photo_url || grp.check_out_photo_url) && (grp.site_photo_front_url || grp.site_photo_back_url || grp.site_photo_store_url) && (
+                                    <div className="w-px h-24 bg-gray-200 self-center" />
+                                  )}
+                                  <PhotoCard url={grp.site_photo_front_url} label="Site — Front" />
+                                  <PhotoCard url={grp.site_photo_back_url}  label="Site — Back" />
+                                  <PhotoCard url={grp.site_photo_store_url} label="Site — Store" />
+                                </div>
                               </div>
-                            </div>
+                            )}
 
                             {/* Approval / site-bonus panel — pending AND approved (editable) */}
                             {(isPending || grp.status === 'approved') && (
