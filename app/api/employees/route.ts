@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
   if (!body.daily_rate || Number(body.daily_rate) <= 0)
     return NextResponse.json({ error: 'Valid daily rate is required.' }, { status: 400 });
   const { data, error } = await supabase.from('employees').insert({
-    full_name:       body.full_name.trim(),
+    full_name:       body.full_name.trim().toUpperCase(),
     passport_no:     body.passport_no?.trim()  || null,
     permit_no:       body.permit_no?.trim()    || null,
     permit_expire:   body.permit_expire        || null,

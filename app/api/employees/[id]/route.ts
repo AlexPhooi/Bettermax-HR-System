@@ -12,7 +12,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   if (!body.full_name?.trim()) return NextResponse.json({ error: 'Full name is required.' }, { status: 400 });
 
   const { data, error } = await supabase.from('employees').update({
-    full_name:       body.full_name.trim(),
+    full_name:       body.full_name.trim().toUpperCase(),
     passport_no:     body.passport_no?.trim()    || null,
     permit_no:       body.permit_no?.trim()       || null,
     permit_expire:   body.permit_expire           || null,
@@ -41,6 +41,12 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   const body = await req.json();
   const allowed: Record<string, unknown> = {};
+  // Full name — self or manager; always stored in UPPERCASE
+  if (body.full_name !== undefined) {
+    const name = body.full_name?.trim().toUpperCase() || '';
+    if (!name) return NextResponse.json({ error: 'Name cannot be empty.' }, { status: 400 });
+    allowed.full_name = name;
+  }
   if (body.phone            !== undefined) allowed.phone            = body.phone?.trim()            || null;
   if (body.bank_name        !== undefined) allowed.bank_name        = body.bank_name                || null;
   if (body.bank_account     !== undefined) allowed.bank_account     = body.bank_account?.trim()     || null;

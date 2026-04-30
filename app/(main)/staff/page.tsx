@@ -179,7 +179,7 @@ export default function StaffPage() {
   // Edit Account modal
   const [showAccModal, setShowAccModal]       = useState(false);
   const [editUserId, setEditUserId]           = useState<string | null>(null);
-  const [editAccForm, setEditAccForm]         = useState({ role: '', newPassword: '', currentPassword: '' });
+  const [editAccForm, setEditAccForm]         = useState({ username: '', role: '', newPassword: '', currentPassword: '' });
   const [showNewPw, setShowNewPw]             = useState(false);
   const [showCurrentPw, setShowCurrentPw]     = useState(false);
   const [accSaving, setAccSaving]             = useState(false);
@@ -401,7 +401,7 @@ export default function StaffPage() {
   function openEditAcc(row: StaffRow) {
     if (!row.user_id) return;
     setEditUserId(row.user_id);
-    setEditAccForm({ role: row.role || '', newPassword: '', currentPassword: '' });
+    setEditAccForm({ username: row.username || '', role: row.role || '', newPassword: '', currentPassword: '' });
     setShowNewPw(false);
     setShowCurrentPw(false);
     setShowAccModal(true);
@@ -417,6 +417,7 @@ export default function StaffPage() {
     setAccSaving(true);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const updates: Record<string, any> = {};
+    if (editAccForm.username?.trim()) updates.username = editAccForm.username.trim().toLowerCase().replace(/\s/g, '');
     if (editAccForm.role) updates.role = editAccForm.role;
     if (editAccForm.newPassword) {
       updates.password = editAccForm.newPassword;
@@ -747,9 +748,9 @@ export default function StaffPage() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="form-label">Full Name *</label>
-                <input className="form-control" required placeholder="As per passport"
-                  value={empForm.full_name} onChange={e => setEmpForm(f => ({ ...f, full_name: e.target.value }))} />
+                <label className="form-label">Full Name * <span className="font-normal text-gray-400">(CAPITAL LETTERS)</span></label>
+                <input className="form-control uppercase" required placeholder="AS PER PASSPORT"
+                  value={empForm.full_name} onChange={e => setEmpForm(f => ({ ...f, full_name: e.target.value.toUpperCase() }))} />
               </div>
               <div>
                 <label className="form-label">Phone</label>
@@ -820,9 +821,9 @@ export default function StaffPage() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="form-label">Full Name *</label>
-              <input className="form-control" required value={editEmpForm.full_name}
-                onChange={e => setEditEmpForm(f => ({ ...f, full_name: e.target.value }))} />
+              <label className="form-label">Full Name * <span className="font-normal text-gray-400">(CAPITAL LETTERS)</span></label>
+              <input className="form-control uppercase" required value={editEmpForm.full_name}
+                onChange={e => setEditEmpForm(f => ({ ...f, full_name: e.target.value.toUpperCase() }))} />
             </div>
             <div>
               <label className="form-label">Phone</label>
@@ -943,6 +944,17 @@ export default function StaffPage() {
       <Modal open={showAccModal} onClose={() => setShowAccModal(false)}
         title="Edit Login Account" maxWidth="max-w-sm">
         <form onSubmit={handleAccSubmit} className="space-y-4">
+          {/* Username — admin/owner only */}
+          <div>
+            <label className="form-label">Username</label>
+            <input
+              className="form-control"
+              placeholder="lowercase, no spaces"
+              value={editAccForm.username}
+              onChange={e => setEditAccForm(f => ({ ...f, username: e.target.value.toLowerCase().replace(/\s/g, '') }))}
+            />
+          </div>
+
           <div>
             <label className="form-label">Role</label>
             <div className="space-y-2">

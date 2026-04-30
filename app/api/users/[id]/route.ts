@@ -12,6 +12,15 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const updates: Record<string, any> = {};
 
+  // Username — admin/owner only
+  if (body.username !== undefined) {
+    const newUsername = body.username.trim().toLowerCase();
+    if (!newUsername) return NextResponse.json({ error: 'Username cannot be empty.' }, { status: 400 });
+    if (!/^[a-z0-9_]+$/.test(newUsername))
+      return NextResponse.json({ error: 'Username may only contain letters, numbers and underscores.' }, { status: 400 });
+    updates.username = newUsername;
+  }
+
   if (body.password !== undefined) {
     if (body.password.length < 6) return NextResponse.json({ error: 'Password must be at least 6 characters.' }, { status: 400 });
     // Require the caller's own password to authorise a password change
