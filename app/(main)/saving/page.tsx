@@ -106,6 +106,9 @@ export default function SavingPage() {
   const [interestApplied, setInterestApplied] = useState(false);
   const [currentMonth] = useState(() => new Date().toISOString().slice(0, 7));
 
+  // Interest preview modal
+  const [showInterestPreview, setShowInterestPreview] = useState(false);
+
   // Rate change
   const [showRateModal, setShowRateModal] = useState(false);
   const [newRate,       setNewRate]       = useState('');
@@ -219,16 +222,19 @@ export default function SavingPage() {
   const totalInterest   = summary.reduce((s, r) => s + r.interest_earned, 0);
   const totalWithdrawn  = summary.reduce((s, r) => s + r.total_withdrawn, 0);
 
-  // Apply monthly interest
-  async function applyInterest() {
-    if (!confirm(`Credit monthly interest (${((settings?.interest_rate ?? 0.02) * 100).toFixed(1)}%) to all ${summary.filter(s => s.current_balance > 0).length} employees with a balance. Confirm?`))
-      return;
+  // Apply monthly interest — opens preview modal first
+  function applyInterest() {
+    setShowInterestPreview(true);
+  }
+
+  async function confirmApplyInterest() {
+    setShowInterestPreview(false);
     setApplying(true);
     try {
       const res  = await fetch('/api/savings/apply-interest', { method: 'POST' });
       const data = await res.json();
       if (!res.ok) { showAlert(data.error || 'Failed.', 'danger'); return; }
-      showAlert(`Interest applied! ${data.processed} employees credited — ${formatRM(data.total_interest_credited)} total.`);
+      showAlert(`✅ Interest applied! ${data.processed} employees credited — ${formatRM(data.total_interest_credited)} total.`);
       setInterestApplied(true);
       loadData();
     } finally { setApplying(false); }
@@ -720,6 +726,92 @@ export default function SavingPage() {
           )}
         </div>
       )}
+
+      {/* ── Interest Preview Modal ── */}
+      {showInterestPreview && (() => {
+        const r = settings?.interest_rate ?? 0.02;
+        const rLabel = `${(r * 100).toFixed(1)}%`;
+        const rows = summary.filter(s => s.current_balance > 0).map(s => {
+          const interest     = Math.round(s.current_balance * r * 100) / 100;
+          const newBalance   = Math.round((s.current_balance + interest) * 100) / 100;
+          return { ...s, interest, newBalance };
+        });
+        const totalInterestNow = rows.reduce((t, r) => t + r.interest, 0);
+        const totalNewBalance  = rows.reduce((t, r) => t + r.newBalance, 0);
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl mx-auto overflow-hidden flex flex-col max-h-[90vh]">
+              {/* Header */}
+              <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between shrink-0">
+                <div>
+                  <h3 className="font-bold text-primary text-lg">⚡ Apply Monthly Interest — Preview</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">Rate: <strong className="text-green-700">{rLabel}/month</strong> · Month: <strong>{fmtMonth(currentMonth)}</strong></p>
+                </div>
+                <button onClick={() => setShowInterestPreview(false)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+              </div>
+
+              {/* Table */}
+              <div className="overflow-y-auto flex-1">
+                {rows.length === 0 ? (
+                  <div className="py-12 text-center text-gray-400">No employees with a balance to credit.</div>
+                ) : (
+                  <table className="w-full text-sm">
+                    <thead className="sticky top-0">
+                      <tr style={{ background: '#1e3a5f' }}>
+                        <th className="px-4 py-2.5 text-left text-xs text-white font-semibold">Name</th>
+                        <th className="px-4 py-2.5 text-right text-xs text-white font-semibold">Current Balance</th>
+                        <th className="px-4 py-2.5 text-right text-xs text-white font-semibold">Interest ({rLabel})</th>
+                        <th className="px-4 py-2.5 text-right text-xs text-white font-semibold">New Balance</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((row, idx) => (
+                        <tr key={row.employee_id} style={{ background: idx % 2 === 0 ? '#fff' : '#f8fafc', borderBottom: '1px solid #f1f5f9' }}>
+                          <td className="px-4 py-2.5">
+                            <span className="font-medium text-gray-800">{row.full_name}</span>
+                            {row.rank && <span className="ml-2 badge bg-blue-50 text-blue-600 text-xs">{row.rank}</span>}
+                          </td>
+                          <td className="px-4 py-2.5 text-right text-gray-600 font-mono">{formatRM(row.current_balance)}</td>
+                          <td className="px-4 py-2.5 text-right text-green-600 font-medium font-mono">+{formatRM(row.interest)}</td>
+                          <td className="px-4 py-2.5 text-right font-bold text-primary font-mono">{formatRM(row.newBalance)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr style={{ background: '#f0f4f8', borderTop: '2px solid #cbd5e1', fontWeight: 700 }}>
+                        <td className="px-4 py-2.5 text-sm text-primary">{rows.length} employees</td>
+                        <td className="px-4 py-2.5 text-right text-sm text-primary font-mono">
+                          {formatRM(rows.reduce((t, r) => t + r.current_balance, 0))}
+                        </td>
+                        <td className="px-4 py-2.5 text-right text-sm text-green-700 font-mono">+{formatRM(totalInterestNow)}</td>
+                        <td className="px-4 py-2.5 text-right text-sm text-primary font-mono">{formatRM(totalNewBalance)}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="px-5 py-4 border-t border-gray-100 flex items-center justify-between gap-3 shrink-0">
+                <p className="text-xs text-gray-500">
+                  This action <strong>cannot be undone</strong>. Interest will be recorded for <strong>{fmtMonth(currentMonth)}</strong>.
+                </p>
+                <div className="flex gap-2 shrink-0">
+                  <button className="btn btn-secondary text-sm" onClick={() => setShowInterestPreview(false)}>
+                    Cancel
+                  </button>
+                  <button
+                    className="btn btn-success text-sm px-5"
+                    onClick={confirmApplyInterest}
+                    disabled={rows.length === 0}>
+                    ✅ Confirm &amp; Apply
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── Rate Change Modal ── */}
       {showRateModal && (

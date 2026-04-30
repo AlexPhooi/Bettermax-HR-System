@@ -87,14 +87,16 @@ export async function POST(req: NextRequest) {
     const rateLabel = `Monthly interest @ ${(rate * 100).toFixed(1)}%`;
 
     const { error } = await supabase.from('savings').insert({
-      employee_id:   emp.id,
-      type:          'credit',
-      type_detail:   'monthly_interest',
-      amount:        interest,
-      balance_after: balanceAfter,
-      reason:        rateLabel,
+      employee_id:    emp.id,
+      type:           'credit',
+      type_detail:    'monthly_interest',
+      amount:         interest,
+      balance_before: Math.round(balance * 100) / 100,
+      balance_after:  balanceAfter,
+      rate_used:      rate,
+      reason:         rateLabel,
       month,
-      created_by:    user.id,
+      created_by:     user.id,
     });
 
     if (!error) {
