@@ -51,7 +51,7 @@ export function calcHoursAndDays(workDate: string, clockIn: string, clockOut: st
 }
 
 export const RANK_RATES: Record<string, number> = {
-  Rookie: 70, Support: 80, Skilled: 90, Pro: 110, Core: 120, Leader: 140,
+  Rookie: 70, Support: 90, Skilled: 100, Pro: 120, Core: 130, Leader: 140,
 };
 
 export const RANK_COLORS: Record<string, string> = {

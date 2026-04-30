@@ -176,6 +176,9 @@ export default function StaffPage() {
   const [editEmpForm, setEditEmpForm]     = useState({ ...EMPTY_EMP, status: 'active', date_of_birth: '' });
   const [empSaving, setEmpSaving]         = useState(false);
 
+  // Live rank → rate map fetched from DB (overrides hardcoded RANK_RATES)
+  const [rankRates, setRankRates] = useState<Record<string, number>>({ ...RANK_RATES });
+
   // Edit Account modal
   const [showAccModal, setShowAccModal]       = useState(false);
   const [editUserId, setEditUserId]           = useState<string | null>(null);
@@ -197,9 +200,18 @@ export default function StaffPage() {
 
   async function loadData() {
     setLoading(true);
-    const res = await fetch('/api/users');
-    const data = await res.json();
-    setUsers(Array.isArray(data) ? data : []);
+    const [usersRes, ratesRes] = await Promise.all([
+      fetch('/api/users'),
+      fetch('/api/settings/ranking-rates'),
+    ]);
+    const usersData = await usersRes.json();
+    setUsers(Array.isArray(usersData) ? usersData : []);
+    if (ratesRes.ok) {
+      const ratesData: { rank: string; daily_rate: number }[] = await ratesRes.json();
+      const map: Record<string, number> = { ...RANK_RATES };
+      ratesData.forEach(r => { map[r.rank] = Number(r.daily_rate); });
+      setRankRates(map);
+    }
     setLoading(false);
   }
 
@@ -472,7 +484,8 @@ export default function StaffPage() {
 
   // ── Rank helpers ───────────────────────────────────────────────────
   function handleRankChange(rank: string, setter: (fn: (f: typeof EMPTY_EMP) => typeof EMPTY_EMP) => void) {
-    const rate = RANK_RATES[rank];
+    // Always use live rates from DB (fetched on load); fallback to hardcoded RANK_RATES
+    const rate = rankRates[rank] ?? RANK_RATES[rank];
     setter(f => ({ ...f, rank, daily_rate: rate ? String(rate) : f.daily_rate }));
   }
 
