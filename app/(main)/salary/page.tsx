@@ -719,8 +719,11 @@ export default function SalaryPage() {
                         thisStatus = rec.payment_slip_url
                           ? <span className="badge bg-green-100 text-green-700 text-xs">💰 Paid</span>
                           : <span className="badge bg-blue-100 text-blue-700 text-xs">✅ Finalized</span>;
+                      } else if (hasThisMonth) {
+                        // Has attendance but wasn't included in finalization (added after)
+                        thisStatus = <span className="badge bg-orange-100 text-orange-600 text-xs">⚠️ Not included</span>;
                       } else {
-                        thisStatus = <span className="text-gray-300 text-xs">—</span>;
+                        thisStatus = <span className="badge bg-red-50 text-red-400 text-xs">🔴 No attendance</span>;
                       }
                     } else if (hasThisMonth) {
                       thisStatus = <span className="badge bg-yellow-100 text-yellow-700 text-xs">🟡 Not finalized</span>;
