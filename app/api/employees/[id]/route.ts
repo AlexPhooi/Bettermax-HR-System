@@ -2,6 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getUser, isManager } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 
+// GET single employee by ID — admin/owner
+export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+  const user = await getUser(req);
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const { data, error } = await supabase.from('employees').select('*').eq('id', params.id).single();
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json(data);
+}
+
 // Full update — admin/owner only
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
   const user = await getUser(req);
@@ -12,7 +21,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   if (!body.full_name?.trim()) return NextResponse.json({ error: 'Full name is required.' }, { status: 400 });
 
   const { data, error } = await supabase.from('employees').update({
-    full_name:       body.full_name.trim().toUpperCase(),
+    full_name:       body.full_name.trim(),
     passport_no:     body.passport_no?.trim()    || null,
     permit_no:       body.permit_no?.trim()       || null,
     permit_expire:   body.permit_expire           || null,
@@ -43,7 +52,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const allowed: Record<string, unknown> = {};
   // Full name — self or manager; always stored in UPPERCASE
   if (body.full_name !== undefined) {
-    const name = body.full_name?.trim().toUpperCase() || '';
+    const name = body.full_name?.trim() || '';
     if (!name) return NextResponse.json({ error: 'Name cannot be empty.' }, { status: 400 });
     allowed.full_name = name;
   }

@@ -355,11 +355,11 @@ export default function StaffPage() {
     setEditEmpId(row.employee_id);
     setShowEmpModal(true); // open modal immediately (form will populate)
 
-    // Fetch fresh employee data directly from DB
-    const empRes = await fetch('/api/employees').then(r => r.json());
-    const empList: EmpData[] = Array.isArray(empRes) ? empRes : [];
-    const emp = empList.find(e => e.id === row.employee_id);
-    if (!emp) return;
+    // Fetch fresh employee data directly by ID (avoids stale list data)
+    const empRes = await fetch(`/api/employees/${row.employee_id}`);
+    if (!empRes.ok) return;
+    const emp: EmpData = await empRes.json();
+    if (!emp?.id) return;
 
     setEditEmpForm({
       full_name:       emp.full_name,
@@ -748,9 +748,9 @@ export default function StaffPage() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="form-label">Full Name * <span className="font-normal text-gray-400">(CAPITAL LETTERS)</span></label>
-                <input className="form-control uppercase" required placeholder="AS PER PASSPORT"
-                  value={empForm.full_name} onChange={e => setEmpForm(f => ({ ...f, full_name: e.target.value.toUpperCase() }))} />
+                <label className="form-label">Full Name *</label>
+                <input className="form-control" required placeholder="As per passport"
+                  value={empForm.full_name} onChange={e => setEmpForm(f => ({ ...f, full_name: e.target.value }))} />
               </div>
               <div>
                 <label className="form-label">Phone</label>
@@ -821,9 +821,9 @@ export default function StaffPage() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="form-label">Full Name * <span className="font-normal text-gray-400">(CAPITAL LETTERS)</span></label>
-              <input className="form-control uppercase" required value={editEmpForm.full_name}
-                onChange={e => setEditEmpForm(f => ({ ...f, full_name: e.target.value.toUpperCase() }))} />
+              <label className="form-label">Full Name *</label>
+              <input className="form-control" required value={editEmpForm.full_name}
+                onChange={e => setEditEmpForm(f => ({ ...f, full_name: e.target.value }))} />
             </div>
             <div>
               <label className="form-label">Phone</label>
