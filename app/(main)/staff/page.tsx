@@ -155,6 +155,8 @@ export default function StaffPage() {
   const [search, setSearch]     = useState('');
   const [roleFilter, setRoleFilter]   = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [sortKey, setSortKey]   = useState<string>('full_name');
+  const [sortDir, setSortDir]   = useState<'asc' | 'desc'>('asc');
 
   // Bin state
   const [binOpen, setBinOpen]         = useState(false);
@@ -267,14 +269,39 @@ export default function StaffPage() {
     }));
   }, [users]);
 
-  const filtered = useMemo(() => staffRows.filter(r => {
-    const name = (r.full_name || r.username || '').toLowerCase();
-    if (search && !name.includes(search.toLowerCase())) return false;
-    if (roleFilter && r.role !== roleFilter) return false;
-    if (statusFilter === 'active'   && r.user_active === false) return false;
-    if (statusFilter === 'inactive' && r.user_active !== false) return false;
-    return true;
-  }), [staffRows, search, roleFilter, statusFilter]);
+  const ROLE_ORDER: Record<string, number> = { owner: 0, admin: 1, approval: 2, editor: 3, viewer: 4 };
+  const RANK_ORDER: Record<string, number> = { Leader: 0, Core: 1, Pro: 2, Skilled: 3, Support: 4, Rookie: 5 };
+
+  const filtered = useMemo(() => {
+    const rows = staffRows.filter(r => {
+      const name = (r.full_name || r.username || '').toLowerCase();
+      if (search && !name.includes(search.toLowerCase())) return false;
+      if (roleFilter && r.role !== roleFilter) return false;
+      if (statusFilter === 'active'   && r.user_active === false) return false;
+      if (statusFilter === 'inactive' && r.user_active !== false) return false;
+      return true;
+    });
+
+    rows.sort((a, b) => {
+      let va: string | number | null = null;
+      let vb: string | number | null = null;
+      switch (sortKey) {
+        case 'full_name':   va = a.full_name || a.username || ''; vb = b.full_name || b.username || ''; break;
+        case 'role':        va = ROLE_ORDER[a.role || ''] ?? 99; vb = ROLE_ORDER[b.role || ''] ?? 99; break;
+        case 'username':    va = a.username || ''; vb = b.username || ''; break;
+        case 'rank':        va = RANK_ORDER[a.rank || ''] ?? 99; vb = RANK_ORDER[b.rank || ''] ?? 99; break;
+        case 'daily_rate':  va = a.daily_rate ?? -1; vb = b.daily_rate ?? -1; break;
+        case 'permit_expire': va = a.permit_expire || '9999'; vb = b.permit_expire || '9999'; break;
+        case 'date_of_birth': va = a.date_of_birth ? a.date_of_birth.slice(5) : '99'; vb = b.date_of_birth ? b.date_of_birth.slice(5) : '99'; break;
+      }
+      if (va === null || va === vb) return 0;
+      const cmp = typeof va === 'number' && typeof vb === 'number'
+        ? va - (vb as number)
+        : String(va).localeCompare(String(vb));
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+    return rows;
+  }, [staffRows, search, roleFilter, statusFilter, sortKey, sortDir]);
 
   // ── Toggle account active ───────────────────────────────────────────
   async function toggleActive(userId: string, currentActive: boolean) {
@@ -552,13 +579,25 @@ export default function StaffPage() {
             <table className="w-full">
               <thead>
                 <tr>
-                  <th className="table-th">Name</th>
-                  <th className="table-th">Role</th>
-                  <th className="table-th">Username</th>
-                  <th className="table-th">Rank</th>
-                  <th className="table-th">Daily Rate</th>
-                  <th className="table-th">Permit Expiry</th>
-                  <th className="table-th">🎂 Birthday</th>
+                  {([
+                    ['full_name',    'Name'],
+                    ['role',         'Role'],
+                    ['username',     'Username'],
+                    ['rank',         'Rank'],
+                    ['daily_rate',   'Daily Rate'],
+                    ['permit_expire','Permit Expiry'],
+                    ['date_of_birth','🎂 Birthday'],
+                  ] as [string, string][]).map(([key, label]) => (
+                    <th key={key} className="table-th cursor-pointer select-none hover:bg-[#2a1f0e] transition-colors"
+                      onClick={() => { if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortKey(key); setSortDir('asc'); } }}>
+                      <span className="inline-flex items-center gap-1">
+                        {label}
+                        {sortKey === key
+                          ? <span className="text-amber-400 text-xs">{sortDir === 'asc' ? '▲' : '▼'}</span>
+                          : <span className="text-gray-600 text-xs">⇅</span>}
+                      </span>
+                    </th>
+                  ))}
                   <th className="table-th">Account</th>
                   <th className="table-th">Actions</th>
                 </tr>
