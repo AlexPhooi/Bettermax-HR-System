@@ -26,7 +26,8 @@ function BrandIcon({ size = 36 }: { size?: number }) {
 const ADMIN_NAV = [
   { href: '/',           label: 'Dashboard' },
   { href: '/staff',      label: 'Staff' },
-  { href: '/attendance', label: 'Record' },
+  { href: '/attendance', label: 'Attendance' },
+  { href: '/advances',   label: 'Advance' },
   { href: '/salary',     label: 'Salary' },
   { href: '/saving',     label: 'Saving' },
   { href: '/settings',   label: 'Settings' },
