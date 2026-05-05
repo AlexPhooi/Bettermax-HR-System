@@ -384,7 +384,6 @@ function CompleteSessionCard({ draftRecs, empList, projList, showAlert, onDone }
     setAddEmpId(''); setAddOpen(false);
   }
   async function handleComplete() {
-    if (!coPhoto) { showAlert('Check-out group photo is required.', 'danger'); return; }
     if (!workerRows.length) { showAlert('No workers in session.', 'danger'); return; }
     setSaving(true);
     try {
@@ -508,7 +507,7 @@ function CompleteSessionCard({ draftRecs, empList, projList, showAlert, onDone }
       <div>
         <p className="form-label mb-3">Group Photos</p>
         <div className="flex gap-6 flex-wrap">
-          <PhotoBtn label="Check-Out Photo *" url={coPhoto} onUrl={setCoPhoto} type="check_out_photo" onUploadChange={onPhotoUpload} />
+          <PhotoBtn label="Check-Out Photo" url={coPhoto} onUrl={setCoPhoto} type="check_out_photo" onUploadChange={onPhotoUpload} />
         </div>
       </div>
       <div>
