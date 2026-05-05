@@ -441,7 +441,7 @@ function CompleteSessionCard({ draftRecs, empList, projList, showAlert, onDone }
             const { days_worked } = calcHoursFromTimes(w.check_in_time, w.check_out_time, schedule);
             return (
               <div key={w.employee_id} className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-2 px-3 py-2.5 border-b border-gray-100 last:border-0">
-                <span className="text-sm text-gray-800 truncate">{w.full_name}</span>
+                <span className="text-sm text-gray-800 min-w-0 break-words leading-tight">{w.full_name}</span>
                 <input type="time" value={w.check_in_time}
                   onChange={e => updateRow(i, 'check_in_time', e.target.value)}
                   className="w-20 text-sm border border-gray-200 rounded px-1 py-1 bg-white" />
@@ -456,7 +456,7 @@ function CompleteSessionCard({ draftRecs, empList, projList, showAlert, onDone }
             const { days_worked } = calcHoursFromTimes(w.check_in_time, w.check_out_time, schedule);
             return (
               <div key={w.employee_id} className="grid grid-cols-[1fr_auto_auto_auto_auto] items-center gap-2 px-3 py-2.5 border-b border-gray-100 bg-blue-50">
-                <span className="text-sm text-blue-800 truncate">
+                <span className="text-sm text-blue-800 min-w-0 break-words leading-tight">
                   {w.full_name} <span className="text-xs text-blue-400">(late)</span>
                 </span>
                 <input type="time" value={w.check_in_time}
@@ -740,7 +740,7 @@ function LeaderView() {
                       <tbody>
                         {s.recs.map(r => (
                           <tr key={r.id} className="border-t border-black/5">
-                            <td className="px-3 py-2 truncate max-w-[120px]">
+                            <td className="px-3 py-2 break-words">
                               {empList.find(e => e.id === r.employee_id)?.full_name || r.employee_id}
                             </td>
                             <td className="px-2 py-2 text-center text-xs font-mono">
