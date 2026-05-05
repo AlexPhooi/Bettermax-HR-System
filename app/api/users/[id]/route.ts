@@ -23,11 +23,15 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   if (body.password !== undefined) {
     if (body.password.length < 6) return NextResponse.json({ error: 'Password must be at least 6 characters.' }, { status: 400 });
-    // Require the caller's own password to authorise a password change
-    if (!body.current_password) return NextResponse.json({ error: 'Your login password is required to change a password.' }, { status: 400 });
-    const { data: me } = await supabase.from('users').select('password_hash').eq('id', user.id).single();
-    const valid = me && await bcrypt.compare(body.current_password, me.password_hash);
-    if (!valid) return NextResponse.json({ error: 'Your login password is incorrect.' }, { status: 403 });
+    // Admin/owner force-resetting another user's password — no self-verification needed
+    // If changing own password, still require current password for safety
+    const isSelf = user.id === params.id;
+    if (isSelf) {
+      if (!body.current_password) return NextResponse.json({ error: 'Your current password is required to change your own password.' }, { status: 400 });
+      const { data: me } = await supabase.from('users').select('password_hash').eq('id', user.id).single();
+      const valid = me && await bcrypt.compare(body.current_password, me.password_hash);
+      if (!valid) return NextResponse.json({ error: 'Your current password is incorrect.' }, { status: 403 });
+    }
     updates.password_hash = await bcrypt.hash(body.password, 10);
   }
   if (body.role !== undefined) {

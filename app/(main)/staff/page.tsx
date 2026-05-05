@@ -495,10 +495,6 @@ export default function StaffPage() {
   async function handleAccSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!editUserId) return;
-    // If setting a new password, require the caller's own password
-    if (editAccForm.newPassword && !editAccForm.currentPassword) {
-      showAlert('Enter your own login password to confirm the password change.', 'danger'); return;
-    }
     setAccSaving(true);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const updates: Record<string, any> = {};
@@ -506,7 +502,6 @@ export default function StaffPage() {
     if (editAccForm.role) updates.role = editAccForm.role;
     if (editAccForm.newPassword) {
       updates.password = editAccForm.newPassword;
-      updates.current_password = editAccForm.currentPassword;
     }
     try {
       const res = await fetch(`/api/users/${editUserId}`, {
@@ -1213,28 +1208,12 @@ export default function StaffPage() {
             </div>
           </div>
 
-          {/* Current password verification — only required when changing password */}
+          {/* Admin force-reset note */}
           {editAccForm.newPassword && (
-            <div className="rounded-lg border-2 border-yellow-300 bg-yellow-50 p-3 space-y-2">
-              <p className="text-xs font-semibold text-yellow-700 flex items-center gap-1.5">
-                🔐 Verify your identity
+            <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2.5">
+              <p className="text-xs text-blue-700">
+                🔑 <strong>Force reset</strong> — the new password will take effect immediately. Share it with the staff member so they can log in.
               </p>
-              <p className="text-xs text-yellow-600">Enter your own login password to confirm this change.</p>
-              <div className="relative">
-                <input
-                  type={showCurrentPw ? 'text' : 'password'}
-                  className="form-control pr-10"
-                  placeholder="Your current password"
-                  value={editAccForm.currentPassword}
-                  onChange={e => setEditAccForm(f => ({ ...f, currentPassword: e.target.value }))}
-                  required
-                />
-                <button type="button" tabIndex={-1}
-                  onClick={() => setShowCurrentPw(v => !v)}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors text-base leading-none">
-                  {showCurrentPw ? '🙈' : '👁️'}
-                </button>
-              </div>
             </div>
           )}
 
