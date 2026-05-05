@@ -40,7 +40,6 @@ export async function POST(req: NextRequest) {
   const { data, error } = await supabase.from('employees').insert({
     full_name:       body.full_name.trim(),
     passport_no:     body.passport_no?.trim()  || null,
-    permit_no:       body.permit_no?.trim()    || null,
     permit_expire:   body.permit_expire        || null,
     date_of_birth:   body.date_of_birth        || null,
     phone:           body.phone?.trim()        || null,

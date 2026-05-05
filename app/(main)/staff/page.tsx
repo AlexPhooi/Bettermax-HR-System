@@ -47,7 +47,7 @@ interface EmpCalcRow {
 interface EmpData {
   id: string; full_name: string; rank: string | null; daily_rate: number;
   permit_expire: string | null; phone: string | null;
-  passport_no: string | null; permit_no: string | null;
+  passport_no: string | null;
   bank_name: string | null; bank_account: string | null;
   passport_doc_url: string | null; permit_doc_url: string | null;
   avatar_url: string | null;
@@ -151,7 +151,7 @@ function UploadButton({ empId, docType, currentUrl, onUploaded }: {
 const EMPTY_ACCOUNT = { username: '', password: '', role: 'viewer' };
 const EMPTY_EMP = {
   full_name: '', phone: '', rank: '', daily_rate: '',
-  passport_no: '', permit_no: '', permit_expire: '',
+  passport_no: '', permit_expire: '',
   date_of_birth: '',
   bank_name: '', bank_account: '',
   passport_doc_url: '', permit_doc_url: '',
@@ -432,7 +432,6 @@ export default function StaffPage() {
       rank:            emp.rank            || '',
       daily_rate:      String(emp.daily_rate),
       passport_no:     emp.passport_no     || '',
-      permit_no:       emp.permit_no       || '',
       permit_expire:   emp.permit_expire   || '',
       date_of_birth:   emp.date_of_birth   || '',
       bank_name:       emp.bank_name       || '',
@@ -877,11 +876,6 @@ export default function StaffPage() {
                 <input className="form-control" value={empForm.passport_no}
                   onChange={e => setEmpForm(f => ({ ...f, passport_no: e.target.value }))} />
               </div>
-              <div>
-                <label className="form-label">Permit No</label>
-                <input className="form-control" value={empForm.permit_no}
-                  onChange={e => setEmpForm(f => ({ ...f, permit_no: e.target.value }))} />
-              </div>
             </div>
 
             <div>
@@ -986,12 +980,7 @@ export default function StaffPage() {
             {/* Permit */}
             <div className="rounded-lg border border-gray-200 p-4">
               <p className="text-xs font-semibold text-gray-600 mb-3">📋 Work Permit</p>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-2">
-                <div>
-                  <label className="form-label">Permit No</label>
-                  <input className="form-control" value={editEmpForm.permit_no}
-                    onChange={e => setEditEmpForm(f => ({ ...f, permit_no: e.target.value }))} />
-                </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-2">
                 <div>
                   <label className="form-label">Expiry Date</label>
                   <input type="date" className="form-control" value={editEmpForm.permit_expire}
