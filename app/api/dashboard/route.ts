@@ -40,8 +40,8 @@ export async function GET(req: NextRequest) {
   const [empRes, attRes, expRes, expiredRes, pendingRes, binStaffRes, binAttRes, binSalaryRes, allEmpRes] = await Promise.all([
     supabase.from('employees').select('id', { count: 'exact', head: true }).eq('status', 'active'),
     supabase.from('hr_attendance').select('days_worked, site_bonus, employees(daily_rate)').gte('work_date', start).lte('work_date', end).eq('status', 'approved').is('deleted_at', null),
-    supabase.from('employees').select('id, full_name, permit_expire').eq('status', 'active').lte('permit_expire', in60).gte('permit_expire', today).order('permit_expire'),
-    supabase.from('employees').select('id, full_name, permit_expire').eq('status', 'active').lt('permit_expire', today).not('permit_expire', 'is', null).order('permit_expire'),
+    supabase.from('employees').select('id, full_name, permit_expire').eq('status', 'active').eq('is_demo', false).lte('permit_expire', in60).gte('permit_expire', today).order('permit_expire'),
+    supabase.from('employees').select('id, full_name, permit_expire').eq('status', 'active').eq('is_demo', false).lt('permit_expire', today).not('permit_expire', 'is', null).order('permit_expire'),
     supabase.from('hr_attendance').select('id', { count: 'exact', head: true }).eq('status', 'pending').is('deleted_at', null),
     supabase.from('users').select('id', { count: 'exact', head: true }).not('deleted_at', 'is', null),
     supabase.from('hr_attendance').select('id', { count: 'exact', head: true }).not('deleted_at', 'is', null),
