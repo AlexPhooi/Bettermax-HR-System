@@ -1107,6 +1107,25 @@ function AdminView() {
     }
   }
 
+  // Force-save ALL record times in a group (regardless of dirty state) — used before approving drafts
+  async function forceResaveAllTimes(grp: AttGroup) {
+    const allRecs = grp.records;
+    setSavingRecs(prev => { const n = new Set(prev); allRecs.forEach(r => n.add(r.id)); return n; });
+    try {
+      await Promise.all(allRecs.map(rec => {
+        const edit    = recEdits[rec.id];
+        const inTime  = edit?.check_in_time  || rec.check_in_time  || adminSchedule.default_start;
+        const outTime = edit?.check_out_time || rec.check_out_time || adminSchedule.work_end;
+        return fetch(`/api/attendance/${rec.id}/edit-time`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ check_in_time: inTime, check_out_time: outTime }),
+        });
+      }));
+    } finally {
+      setSavingRecs(prev => { const n = new Set(prev); allRecs.forEach(r => n.delete(r.id)); return n; });
+    }
+  }
+
   // Save all edited records in a group in parallel
   async function saveAllInGroup(grp: AttGroup) {
     const dirtyRecs = grp.records.filter(rec => {
@@ -1405,8 +1424,8 @@ function AdminView() {
                                   className="btn bg-green-500 hover:bg-green-600 text-white w-full"
                                   disabled={approving !== null}
                                   onClick={async () => {
-                                    // Save any dirty times first, then approve
-                                    await saveAllInGroup(grp);
+                                    // Force-save ALL times (recalculates hours_worked), then approve
+                                    await forceResaveAllTimes(grp);
                                     approveGroup(grp, 'approved');
                                   }}>
                                   {approving === grp.key + 'approved' ? '…' : `✓ Save Times & Approve ${grp.workerCount} Records`}
@@ -1450,6 +1469,17 @@ function AdminView() {
                                       {approving === grp.key + 'rejected' ? '…' : '✗ Reject'}
                                     </button>
                                   </div>
+                                )}
+                                {!isPending && grp.status === 'approved' && (
+                                  <button
+                                    className="btn btn-secondary text-sm w-full"
+                                    disabled={approving !== null}
+                                    onClick={async () => {
+                                      await forceResaveAllTimes(grp);
+                                      approveGroup(grp, 'approved');
+                                    }}>
+                                    {approving === grp.key + 'approved' ? '…' : '🔄 Recalculate Hours & Update Bonus'}
+                                  </button>
                                 )}
                               </div>
                             )}
