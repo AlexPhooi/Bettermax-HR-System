@@ -1381,6 +1381,39 @@ function AdminView() {
                               </div>
                             )}
 
+                            {/* Draft rescue panel — admin can fix times and approve directly */}
+                            {grp.status === 'draft' && (
+                              <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 space-y-3">
+                                <p className="text-sm font-semibold text-blue-800">
+                                  📝 Incomplete Draft — fix check-out times in the table below, then approve
+                                </p>
+                                <label className={`flex items-start gap-3 cursor-pointer rounded-lg border p-3 transition-colors ${siteClean ? 'bg-green-100 border-green-300' : 'bg-white border-gray-200'}`}>
+                                  <input type="checkbox" className="mt-0.5 w-4 h-4 accent-green-600"
+                                    checked={siteClean}
+                                    onChange={e => setSiteCleanEdits(g => ({ ...g, [grp.key]: e.target.checked }))} />
+                                  <div>
+                                    <p className="text-sm font-medium text-gray-800">🧹 Site was clean</p>
+                                    <p className="text-xs text-gray-500">+RM10 per worker ≥8h</p>
+                                    {siteClean && eligibleCount > 0 && (
+                                      <p className="text-xs text-green-700 font-semibold mt-0.5">
+                                        +RM10 × {eligibleCount} worker{eligibleCount !== 1 ? 's' : ''} = +RM{(eligibleCount * 10).toFixed(2)}
+                                      </p>
+                                    )}
+                                  </div>
+                                </label>
+                                <button
+                                  className="btn bg-green-500 hover:bg-green-600 text-white w-full"
+                                  disabled={approving !== null}
+                                  onClick={async () => {
+                                    // Save any dirty times first, then approve
+                                    await saveAllInGroup(grp);
+                                    approveGroup(grp, 'approved');
+                                  }}>
+                                  {approving === grp.key + 'approved' ? '…' : `✓ Save Times & Approve ${grp.workerCount} Records`}
+                                </button>
+                              </div>
+                            )}
+
                             {/* Approval / site-bonus panel — pending AND approved (editable) */}
                             {(isPending || grp.status === 'approved') && (
                               <div className={`rounded-xl border p-4 space-y-3 ${isPending ? 'border-yellow-200 bg-yellow-50' : 'border-green-200 bg-green-50'}`}>
