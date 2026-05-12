@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUser } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
+import sharp from 'sharp';
 
 // Photo types that just return a URL without DB auto-update
 const URL_ONLY_TYPES = ['check_in_photo', 'check_out_photo', 'site_front', 'site_back', 'site_store', 'avatar'];
@@ -46,12 +47,30 @@ export async function POST(req: NextRequest) {
     path = `misc/${docType}_${ts}.${ext}`;
   }
 
-  const bytes  = await file.arrayBuffer();
-  const buffer = Buffer.from(bytes);
+  const bytes     = await file.arrayBuffer();
+  const rawBuffer = Buffer.from(bytes);
+
+  // Compress images to JPEG (max 1400px, quality 82) — PDFs are passed through unchanged
+  const isImage = file.type.startsWith('image/');
+  let buffer: Buffer;
+  let uploadContentType: string;
+  if (isImage) {
+    buffer = await sharp(rawBuffer)
+      .rotate()                              // auto-orient from EXIF
+      .resize({ width: 1400, height: 1400, fit: 'inside', withoutEnlargement: true })
+      .jpeg({ quality: 82, mozjpeg: true })
+      .toBuffer();
+    uploadContentType = 'image/jpeg';
+    // Update path extension to .jpg for compressed images
+    path = path.replace(/\.[^.]+$/, '.jpg');
+  } else {
+    buffer = rawBuffer;
+    uploadContentType = file.type;
+  }
 
   const { error: upErr } = await supabase.storage
     .from('hr-documents')
-    .upload(path, buffer, { contentType: file.type, upsert: true });
+    .upload(path, buffer, { contentType: uploadContentType, upsert: true });
 
   if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 });
 

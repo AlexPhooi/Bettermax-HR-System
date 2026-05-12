@@ -115,7 +115,7 @@ function PhotoCard({ url, label }: { url: string | null; label: string }) {
       <p className="text-xs text-gray-500 font-medium">{label}</p>
       <a href={url} target="_blank" rel="noopener noreferrer">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={url} alt={label} className="w-20 h-20 object-cover rounded-lg border border-gray-200 hover:opacity-80 transition" />
+        <img src={url} alt={label} loading="lazy" decoding="async" className="w-20 h-20 object-cover rounded-lg border border-gray-200 hover:opacity-80 transition" />
       </a>
       {time && <p className="text-[10px] text-gray-400">{time}</p>}
     </div>
@@ -221,7 +221,7 @@ function PhotoBtn({ label, url, onUrl, type, photoLabel, onUploadChange }: {
       {url
         ? <a href={url} target="_blank" rel="noopener noreferrer">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={url} alt={label} className="w-20 h-20 object-cover rounded-lg border-2 border-green-400 hover:opacity-80 transition" />
+            <img src={url} alt={label} loading="lazy" decoding="async" className="w-20 h-20 object-cover rounded-lg border-2 border-green-400 hover:opacity-80 transition" />
           </a>
         : <div className="w-20 h-20 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center text-gray-300 text-3xl">📷</div>
       }
@@ -421,7 +421,7 @@ function CompleteSessionCard({ draftRecs, empList, projList, showAlert, onDone }
         {sessionCheckInPhoto && (
           <a href={sessionCheckInPhoto} target="_blank" rel="noopener noreferrer">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={sessionCheckInPhoto} alt="check-in" className="w-14 h-14 object-cover rounded-lg border-2 border-green-400 hover:opacity-80" />
+            <img src={sessionCheckInPhoto} alt="check-in" loading="lazy" decoding="async" className="w-14 h-14 object-cover rounded-lg border-2 border-green-400 hover:opacity-80" />
           </a>
         )}
       </div>
@@ -767,14 +767,14 @@ function LeaderView() {
                       {s.recs[0]?.check_in_photo_url && (
                         <a href={s.recs[0].check_in_photo_url} target="_blank" rel="noopener noreferrer" className="flex flex-col items-center gap-1">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={s.recs[0].check_in_photo_url} alt="Check-in" className="w-14 h-14 object-cover rounded-lg border border-black/10" />
+                          <img src={s.recs[0].check_in_photo_url} alt="Check-in" loading="lazy" decoding="async" className="w-14 h-14 object-cover rounded-lg border border-black/10" />
                           <span className="text-xs text-gray-500">Check-in</span>
                         </a>
                       )}
                       {s.recs[0]?.check_out_photo_url && (
                         <a href={s.recs[0].check_out_photo_url} target="_blank" rel="noopener noreferrer" className="flex flex-col items-center gap-1">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={s.recs[0].check_out_photo_url} alt="Check-out" className="w-14 h-14 object-cover rounded-lg border border-black/10" />
+                          <img src={s.recs[0].check_out_photo_url} alt="Check-out" loading="lazy" decoding="async" className="w-14 h-14 object-cover rounded-lg border border-black/10" />
                           <span className="text-xs text-gray-500">Check-out</span>
                         </a>
                       )}
