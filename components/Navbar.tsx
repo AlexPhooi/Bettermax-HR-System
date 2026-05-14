@@ -4,24 +4,24 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useState, useEffect, useRef } from 'react';
 import { useRole } from '@/lib/role-context';
 
-// ── Brand icon SVG — circle + white arch + gold trapezoid ────────────
+// ── Brand icon SVG — matches real logo: circle + arch + triangle beam ─
+// viewBox is 100×130 so the triangle can fan below the circle boundary
 function BrandIcon({ size = 36 }: { size?: number }) {
+  const h = Math.round(size * 1.3);
   return (
-    <svg width={size} height={size} viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+    <svg width={size} height={h} viewBox="0 0 100 130" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
       <defs>
         <linearGradient id="bmg-nav" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#FFF0A0"/>
+          <stop offset="0%" stopColor="#FFFDE8"/>
           <stop offset="100%" stopColor="#FFB800"/>
         </linearGradient>
-        <clipPath id="bmg-nav-clip">
-          <circle cx="50" cy="50" r="50"/>
-        </clipPath>
       </defs>
-      <circle cx="50" cy="50" r="50" fill="#1A0E06"/>
-      <g clipPath="url(#bmg-nav-clip)">
-        <rect x="24" y="10" width="52" height="50" rx="10" ry="10" fill="white"/>
-        <polygon points="30,60 70,60 84,100 16,100" fill="url(#bmg-nav)"/>
-      </g>
+      {/* Dark circle background */}
+      <circle cx="50" cy="50" r="50" fill="#3D2D00"/>
+      {/* White rounded arch inside upper half of circle */}
+      <rect x="26" y="16" width="48" height="44" rx="9" ry="9" fill="white"/>
+      {/* Gold gradient triangle — narrow at top (inside arch), fans wide below circle */}
+      <polygon points="40,58 60,58 82,130 18,130" fill="url(#bmg-nav)"/>
     </svg>
   );
 }

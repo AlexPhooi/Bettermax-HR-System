@@ -2,28 +2,6 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-// ── Inline brand SVG icon — circle + white arch + gold trapezoid ──────
-function BrandIcon({ size = 80 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
-      <defs>
-        <linearGradient id="bmg-login" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#FFF0A0"/>
-          <stop offset="100%" stopColor="#FFB800"/>
-        </linearGradient>
-        <clipPath id="bmg-login-clip">
-          <circle cx="50" cy="50" r="50"/>
-        </clipPath>
-      </defs>
-      <circle cx="50" cy="50" r="50" fill="#1A0E06"/>
-      <g clipPath="url(#bmg-login-clip)">
-        <rect x="24" y="10" width="52" height="50" rx="10" ry="10" fill="white"/>
-        <polygon points="30,60 70,60 84,100 16,100" fill="url(#bmg-login)"/>
-      </g>
-    </svg>
-  );
-}
-
 export default function LoginPage() {
   const router = useRouter();
   const [username, setUsername] = useState('');
@@ -50,34 +28,23 @@ export default function LoginPage() {
   return (
     <div style={{
       minHeight: '100vh',
-      background: '#FAF5E9',
+      background: '#FFFFFF',
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
       justifyContent: 'center',
       padding: '32px 16px',
     }}>
-      <div style={{ width: '100%', maxWidth: 420 }}>
+      <div style={{ width: '100%', maxWidth: 440 }}>
 
-        {/* ── Logo block ──────────────────────────────────────────── */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 18, marginBottom: 28 }}>
-          <BrandIcon size={72} />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-            <p style={{ fontFamily: 'Georgia, serif', color: '#1A0E06', fontSize: 28, fontWeight: 700, letterSpacing: 2, lineHeight: 1, margin: 0 }}>
-              BETTERMAX
-            </p>
-            <div style={{ height: '1px', background: '#C9A84C', width: '100%' }} />
-            <p style={{ fontFamily: 'Georgia, serif', color: '#C9A84C', fontSize: 11, letterSpacing: 5, margin: 0 }}>
-              ENTERPRISE
-            </p>
-            <p style={{ fontFamily: 'Arial, sans-serif', color: '#6B4226', fontSize: 10.5, letterSpacing: 3.5, margin: 0 }}>
-              贝 得 蜜 企 业
-            </p>
-            <div style={{ height: '0.5px', background: '#C9A84C', opacity: 0.35, width: '100%' }} />
-            <p style={{ fontFamily: 'Arial, sans-serif', color: '#9B7B5E', fontSize: 7, letterSpacing: 1.5, margin: 0, textTransform: 'uppercase' }}>
-              House Extension &amp; Renovation Specialist
-            </p>
-          </div>
+        {/* ── Real logo letterhead image ───────────────────────────── */}
+        <div style={{ marginBottom: 28, textAlign: 'center' }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/logo-letterhead.png"
+            alt="Bettermax Enterprise"
+            style={{ maxWidth: '100%', height: 'auto', display: 'inline-block' }}
+          />
         </div>
 
         {/* ── Login card ──────────────────────────────────────────── */}
