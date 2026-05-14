@@ -24,8 +24,8 @@ module.exports = {
       colors: {
         // ── Brand primary (dark brown) ───────────────────────────
         primary: {
-          DEFAULT: '#1A0E06',   // brown-deep — navbar, dark bg
-          light:   '#3D2B1F',   // brown-mid  — hover states
+          DEFAULT: '#1E1400',   // brown-deep — navbar, dark bg
+          light:   '#3D2B00',   // brown-mid  — hover states
         },
         // ── Brand accent (gold) ──────────────────────────────────
         accent:  '#C9A84C',     // gold — buttons, highlights

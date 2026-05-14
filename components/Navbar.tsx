@@ -4,24 +4,24 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useState, useEffect, useRef } from 'react';
 import { useRole } from '@/lib/role-context';
 
-// ── Brand icon SVG — matches real logo: circle + arch + triangle beam ─
-// viewBox is 100×130 so the triangle can fan below the circle boundary
+// ── Brand icon SVG — pixel-traced from real Bettermax Logo.png ────────
+// viewBox 100×122: circle fills 0–96, triangle fans to 122
 function BrandIcon({ size = 36 }: { size?: number }) {
-  const h = Math.round(size * 1.3);
+  const h = Math.round(size * 1.22);
   return (
-    <svg width={size} height={h} viewBox="0 0 100 130" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+    <svg width={size} height={h} viewBox="0 0 100 122" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
       <defs>
         <linearGradient id="bmg-nav" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#FFFDE8"/>
+          <stop offset="0%" stopColor="#FFF8D0"/>
           <stop offset="100%" stopColor="#FFB800"/>
         </linearGradient>
       </defs>
-      {/* Dark circle background */}
-      <circle cx="50" cy="50" r="50" fill="#3D2D00"/>
-      {/* White rounded arch inside upper half of circle */}
-      <rect x="26" y="16" width="48" height="44" rx="9" ry="9" fill="white"/>
-      {/* Gold gradient triangle — narrow at top (inside arch), fans wide below circle */}
-      <polygon points="40,58 60,58 82,130 18,130" fill="url(#bmg-nav)"/>
+      {/* Dark olive-brown circle — matches logo colour #2D2100 */}
+      <circle cx="50" cy="48" r="46" fill="#2D2100"/>
+      {/* White rounded arch — upper 55% of circle, large corner radius */}
+      <rect x="26" y="14" width="48" height="38" rx="8" ry="8" fill="white"/>
+      {/* Gold beam — narrow at arch bottom, fans wide past circle edge */}
+      <polygon points="34,52 66,52 90,122 10,122" fill="url(#bmg-nav)"/>
     </svg>
   );
 }
@@ -123,7 +123,7 @@ export default function Navbar() {
   return (
     <>
       {/* ── Top navigation bar ──────────────────────────────────── */}
-      <nav style={{ background: '#1A0E06', borderBottom: '2px solid #C9A84C' }}
+      <nav style={{ background: '#1E1400', borderBottom: '2px solid #C9A84C' }}
         className="sticky top-0 z-50 shadow-md">
         <div className="flex items-center h-14 px-4 md:px-6 gap-4">
 
@@ -134,16 +134,16 @@ export default function Navbar() {
             aria-label="Menu">
             <BrandIcon size={32} />
             <div className="hidden md:block leading-tight">
-              <p style={{ fontFamily: 'Georgia, serif', color: '#E8D5A3', fontSize: 13, fontWeight: 700, letterSpacing: 1 }}>
-                BETTERMAX
+              <p style={{ fontFamily: 'Georgia, serif', fontSize: 13, fontWeight: 700, letterSpacing: 1, margin: 0 }}>
+                <span style={{ color: '#E8D5A3' }}>BETTER</span><span style={{ color: '#FFB800' }}>MAX</span>
               </p>
-              <p style={{ fontFamily: 'Arial, sans-serif', color: '#C49A6C', fontSize: 8, letterSpacing: 3 }}>
+              <p style={{ fontFamily: 'Arial, sans-serif', color: '#C49A6C', fontSize: 8, letterSpacing: 3, margin: 0 }}>
                 ENTERPRISE
               </p>
             </div>
             {/* Mobile: just "BETTERMAX" next to icon */}
-            <span className="md:hidden" style={{ fontFamily: 'Georgia, serif', color: '#E8D5A3', fontSize: 13, fontWeight: 700, letterSpacing: 1 }}>
-              BETTERMAX
+            <span className="md:hidden" style={{ fontFamily: 'Georgia, serif', fontSize: 13, fontWeight: 700, letterSpacing: 1 }}>
+              <span style={{ color: '#E8D5A3' }}>BETTER</span><span style={{ color: '#FFB800' }}>MAX</span>
             </span>
           </button>
 
@@ -153,15 +153,15 @@ export default function Navbar() {
               <li key={l.href}>
                 <Link href={l.href}
                   style={isActive(l.href)
-                    ? { background: '#3D2B1F', color: '#C9A84C', borderBottom: '2px solid #C9A84C', fontWeight: 700 }
+                    ? { background: '#3D2B00', color: '#C9A84C', borderBottom: '2px solid #C9A84C', fontWeight: 700 }
                     : { color: '#C49A6C' }}
-                  className="px-3 py-1.5 rounded-t text-sm transition-colors block relative hover:text-[#E8D5A3] hover:bg-[#3D2B1F]"
+                  className="px-3 py-1.5 rounded-t text-sm transition-colors block relative hover:text-[#E8D5A3] hover:bg-[#3D2B00]"
                   onMouseEnter={e => { if (!isActive(l.href)) (e.currentTarget as HTMLElement).style.color = '#E8D5A3'; }}
                   onMouseLeave={e => { if (!isActive(l.href)) (e.currentTarget as HTMLElement).style.color = '#C49A6C'; }}>
                   {l.label}
                   {/* Pending badge */}
                   {isAdmin && l.href === '/attendance' && pendingCount > 0 && (
-                    <span style={{ background: '#C9A84C', color: '#1A0E06' }}
+                    <span style={{ background: '#C9A84C', color: '#1E1400' }}
                       className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full text-[10px] font-bold leading-4 text-center">
                       {pendingCount}
                     </span>
@@ -192,7 +192,7 @@ export default function Navbar() {
             {/* Username chip — desktop */}
             {loaded && username && (
               <span className="hidden md:block text-xs px-2.5 py-1 rounded"
-                style={{ color: '#C49A6C', background: '#3D2B1F' }}>
+                style={{ color: '#C49A6C', background: '#3D2B00' }}>
                 {username}
               </span>
             )}
@@ -217,7 +217,7 @@ export default function Navbar() {
                 {bellOpen && (
                   <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-lg shadow-xl z-50 overflow-hidden"
                     style={{ border: '1px solid #C9A84C' }}>
-                    <div className="px-4 py-3" style={{ background: '#1A0E06', borderBottom: '1px solid #C9A84C' }}>
+                    <div className="px-4 py-3" style={{ background: '#1E1400', borderBottom: '1px solid #C9A84C' }}>
                       <p className="text-sm font-semibold" style={{ color: '#E8D5A3', fontFamily: 'Georgia, serif' }}>
                         Permit Expiry Alerts
                       </p>
@@ -282,8 +282,8 @@ export default function Navbar() {
 
             <button onClick={logout}
               className="text-xs px-3 py-1.5 rounded transition-colors font-semibold"
-              style={{ border: '1px solid #6B4226', color: '#C49A6C', background: 'transparent' }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#3D2B1F'; (e.currentTarget as HTMLElement).style.color = '#E8D5A3'; }}
+              style={{ border: '1px solid #6B4A00', color: '#C49A6C', background: 'transparent' }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#3D2B00'; (e.currentTarget as HTMLElement).style.color = '#E8D5A3'; }}
               onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = '#C49A6C'; }}>
               Logout
             </button>
@@ -294,17 +294,17 @@ export default function Navbar() {
       {/* ── Mobile dropdown menu (fixed overlay, doesn't shift layout) ── */}
       {open && (
         <div className="md:hidden fixed top-14 left-0 right-0 z-40 shadow-lg"
-          style={{ background: '#1A0E06', borderBottom: '2px solid #C9A84C' }}>
+          style={{ background: '#1E1400', borderBottom: '2px solid #C9A84C' }}>
           {navLinks.map(l => (
             <Link key={l.href} href={l.href} onClick={() => setOpen(false)}
               className="flex items-center justify-between px-6 py-3 text-sm transition-colors relative"
               style={isActive(l.href)
-                ? { background: '#3D2B1F', color: '#C9A84C', fontWeight: 700, borderLeft: '3px solid #C9A84C' }
+                ? { background: '#3D2B00', color: '#C9A84C', fontWeight: 700, borderLeft: '3px solid #C9A84C' }
                 : { color: '#C49A6C', borderLeft: '3px solid transparent' }}>
               {l.label}
               {/* Badges on mobile */}
               {isAdmin && l.href === '/attendance' && pendingCount > 0 && (
-                <span style={{ background: '#C9A84C', color: '#1A0E06' }}
+                <span style={{ background: '#C9A84C', color: '#1E1400' }}
                   className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-bold">
                   {pendingCount}
                 </span>
@@ -313,7 +313,7 @@ export default function Navbar() {
           ))}
           {/* Username on mobile */}
           {loaded && username && (
-            <div className="px-6 py-2.5 text-xs" style={{ color: '#6B4226', borderTop: '1px solid #3D2B1F' }}>
+            <div className="px-6 py-2.5 text-xs" style={{ color: '#6B4A00', borderTop: '1px solid #3D2B00' }}>
               Logged in as <strong style={{ color: '#C49A6C' }}>{username}</strong>
             </div>
           )}
