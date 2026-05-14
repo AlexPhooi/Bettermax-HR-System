@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -38,12 +39,14 @@ export default function LoginPage() {
       <div style={{ width: '100%', maxWidth: 440 }}>
 
         {/* ── Real logo letterhead image ───────────────────────────── */}
-        <div style={{ marginBottom: 28, textAlign: 'center' }}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
+        <div style={{ marginBottom: 28 }}>
+          <Image
             src="/logo-letterhead.png"
             alt="Bettermax Enterprise"
-            style={{ maxWidth: '100%', height: 'auto', display: 'inline-block' }}
+            width={3780}
+            height={1890}
+            priority
+            style={{ width: '100%', height: 'auto' }}
           />
         </div>
 
