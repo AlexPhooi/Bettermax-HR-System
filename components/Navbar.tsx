@@ -4,20 +4,24 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useState, useEffect, useRef } from 'react';
 import { useRole } from '@/lib/role-context';
 
-// ── Brand icon SVG (inline, 36 px tall) ───────────────────────────────
+// ── Brand icon SVG — circle + white arch + gold trapezoid ────────────
 function BrandIcon({ size = 36 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
-      <polyline points="14,88 100,16 186,88"
-        fill="none" stroke="#C9A84C" strokeWidth="6"
-        strokeLinejoin="miter" strokeLinecap="square"/>
-      <rect x="22"  y="88"  width="24" height="88"  fill="#C9A84C"/>
-      <rect x="88"  y="62"  width="24" height="114" fill="#E8D5A3"/>
-      <rect x="154" y="88"  width="24" height="88"  fill="#C9A84C"/>
-      <rect x="22"  y="130" width="156" height="6"  fill="#C9A84C" opacity=".4"/>
-      <rect x="92"  y="74"  width="16" height="18"  fill="#1A0E06"/>
-      <rect x="92"  y="102" width="16" height="22"  fill="#1A0E06"/>
-      <rect x="10"  y="176" width="180" height="8"  fill="#C9A84C"/>
+    <svg width={size} height={size} viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+      <defs>
+        <linearGradient id="bmg-nav" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#FFF0A0"/>
+          <stop offset="100%" stopColor="#FFB800"/>
+        </linearGradient>
+        <clipPath id="bmg-nav-clip">
+          <circle cx="50" cy="50" r="50"/>
+        </clipPath>
+      </defs>
+      <circle cx="50" cy="50" r="50" fill="#1A0E06"/>
+      <g clipPath="url(#bmg-nav-clip)">
+        <rect x="24" y="10" width="52" height="50" rx="10" ry="10" fill="white"/>
+        <polygon points="30,60 70,60 84,100 16,100" fill="url(#bmg-nav)"/>
+      </g>
     </svg>
   );
 }
