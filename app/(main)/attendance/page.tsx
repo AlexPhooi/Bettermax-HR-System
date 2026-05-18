@@ -928,6 +928,11 @@ function AdminView() {
   // Per-group project fix (admin/owner only — keyed by group key)
   const [fixProjectEdits, setFixProjectEdits] = useState<Record<string, string>>({});
   const [fixingProject, setFixingProject] = useState<Set<string>>(new Set());
+  // Per-group add-workers panel (admin/owner only)
+  const [addWorkerOpen,  setAddWorkerOpen]  = useState<Set<string>>(new Set());
+  const [addWorkerSels,  setAddWorkerSels]  = useState<Record<string, Set<string>>>({});
+  const [addWorkerTimes, setAddWorkerTimes] = useState<Record<string, { checkIn: string; checkOut: string }>>({});
+  const [addWorkerSaving,setAddWorkerSaving]= useState<Set<string>>(new Set());
   // Per-record time edits (keyed by record id)
   const [recEdits, setRecEdits] = useState<Record<string, { check_in_time: string; check_out_time: string }>>({});
   // Records currently being saved
@@ -1206,6 +1211,41 @@ function AdminView() {
     }
   }
 
+  // Add missing workers to an existing pending/approved group (admin/owner only)
+  async function saveAddWorkers(grp: AttGroup) {
+    const selectedIds = [...(addWorkerSels[grp.key] || new Set())];
+    if (!selectedIds.length) return;
+    const times = addWorkerTimes[grp.key] || {
+      checkIn:  grp.records[0]?.check_in_time?.slice(0, 5)  || '08:00',
+      checkOut: grp.records[0]?.check_out_time?.slice(0, 5) || '18:00',
+    };
+    const siteCleanVal  = grp.records[0]?.site_clean ?? false;
+    const targetStatus  = grp.status === 'approved' ? 'approved' : 'pending';
+    setAddWorkerSaving(prev => { const n = new Set(prev); n.add(grp.key); return n; });
+    try {
+      const res = await fetch('/api/attendance', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          employee_ids:   selectedIds,
+          project_id:     grp.project_id || null,
+          work_date:      grp.work_date,
+          check_in_time:  times.checkIn,
+          check_out_time: times.checkOut,
+          status:         targetStatus,
+          site_clean:     siteCleanVal,
+        }),
+      });
+      if (!res.ok) { const d = await res.json(); showAlert(d.error || 'Failed to add workers.', 'danger'); return; }
+      showAlert(`✅ ${selectedIds.length} worker${selectedIds.length !== 1 ? 's' : ''} added to group.`, 'success');
+      setAddWorkerOpen(prev => { const n = new Set(prev); n.delete(grp.key); return n; });
+      setAddWorkerSels(prev => { const n = { ...prev }; delete n[grp.key]; return n; });
+      setAddWorkerTimes(prev => { const n = { ...prev }; delete n[grp.key]; return n; });
+      loadData();
+    } finally {
+      setAddWorkerSaving(prev => { const n = new Set(prev); n.delete(grp.key); return n; });
+    }
+  }
+
   async function deleteRecord(id: string) {
     if (!confirm('Delete this record?')) return;
     await fetch(`/api/attendance/${id}`, { method: 'DELETE' });
@@ -1461,6 +1501,81 @@ function AdminView() {
                                 </button>
                               </div>
                             )}
+
+                            {/* Add Workers — admin/owner can add missing staff to a group */}
+                            {isAdminOrOwner && (isPending || grp.status === 'approved') && (() => {
+                              const alreadyIn   = new Set(grp.records.map(r => r.employee_id));
+                              const addableEmps = empList.filter(e => e.status === 'active' && !alreadyIn.has(e.id));
+                              const isOpen      = addWorkerOpen.has(grp.key);
+                              const sels        = addWorkerSels[grp.key] || new Set<string>();
+                              const times       = addWorkerTimes[grp.key] || {
+                                checkIn:  grp.records[0]?.check_in_time?.slice(0, 5)  || '08:00',
+                                checkOut: grp.records[0]?.check_out_time?.slice(0, 5) || '18:00',
+                              };
+                              const toggle = (id: string) => setAddWorkerSels(prev => {
+                                const cur = new Set(prev[grp.key] || []);
+                                cur.has(id) ? cur.delete(id) : cur.add(id);
+                                return { ...prev, [grp.key]: cur };
+                              });
+                              return (
+                                <div className="rounded-xl border border-purple-200 bg-purple-50 overflow-hidden">
+                                  <button
+                                    className="w-full flex items-center justify-between px-3 py-2.5 text-sm font-semibold text-purple-800 hover:bg-purple-100 transition-colors"
+                                    onClick={() => setAddWorkerOpen(prev => {
+                                      const n = new Set(prev);
+                                      n.has(grp.key) ? n.delete(grp.key) : n.add(grp.key);
+                                      return n;
+                                    })}>
+                                    <span>➕ Add Missing Workers</span>
+                                    <span className="text-xs font-normal text-purple-500">{isOpen ? '▲ Close' : `${addableEmps.length} available`}</span>
+                                  </button>
+                                  {isOpen && (
+                                    <div className="px-3 pb-3 space-y-2 border-t border-purple-200">
+                                      {/* Time row */}
+                                      <div className="flex items-center gap-3 pt-2 flex-wrap">
+                                        <span className="text-xs text-purple-600 font-medium shrink-0">Times for new workers:</span>
+                                        <div className="flex items-center gap-2">
+                                          <label className="text-xs text-gray-500">In</label>
+                                          <input type="time" value={times.checkIn}
+                                            className="form-control text-xs py-1 w-28"
+                                            onChange={e => setAddWorkerTimes(prev => ({ ...prev, [grp.key]: { ...times, checkIn: e.target.value } }))} />
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          <label className="text-xs text-gray-500">Out</label>
+                                          <input type="time" value={times.checkOut}
+                                            className="form-control text-xs py-1 w-28"
+                                            onChange={e => setAddWorkerTimes(prev => ({ ...prev, [grp.key]: { ...times, checkOut: e.target.value } }))} />
+                                        </div>
+                                      </div>
+                                      {/* Worker list */}
+                                      {addableEmps.length === 0
+                                        ? <p className="text-xs text-gray-400 py-1">All active employees are already in this group.</p>
+                                        : (
+                                          <div className="max-h-44 overflow-y-auto rounded border border-purple-100 bg-white divide-y divide-gray-100">
+                                            {addableEmps.map(emp => (
+                                              <label key={emp.id} className="flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-purple-50 transition-colors">
+                                                <input type="checkbox" className="w-4 h-4 accent-purple-600 shrink-0"
+                                                  checked={sels.has(emp.id)}
+                                                  onChange={() => toggle(emp.id)} />
+                                                <span className="text-sm text-gray-800 min-w-0 break-words">{emp.full_name}</span>
+                                              </label>
+                                            ))}
+                                          </div>
+                                        )
+                                      }
+                                      {sels.size > 0 && (
+                                        <button
+                                          className="btn btn-primary w-full"
+                                          disabled={addWorkerSaving.has(grp.key)}
+                                          onClick={() => saveAddWorkers(grp)}>
+                                          {addWorkerSaving.has(grp.key) ? 'Adding…' : `✓ Add ${sels.size} Worker${sels.size !== 1 ? 's' : ''} to Group`}
+                                        </button>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })()}
 
                             {/* Fix Project — admin/owner can reassign project for entire group */}
                             {isAdminOrOwner && (isPending || grp.status === 'approved') && (
