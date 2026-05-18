@@ -908,6 +908,8 @@ const EMPTY_ADD = {
 };
 
 function AdminView() {
+  const { role: myRole } = useRole();
+  const isAdminOrOwner = myRole === 'admin' || myRole === 'owner';
   const [records,  setRecords]  = useState<AttRecord[]>([]);
   const [advances, setAdvances] = useState<Advance[]>([]);
   const [projList, setProjList] = useState<Project[]>([]);
@@ -923,6 +925,9 @@ function AdminView() {
 
   // Per-group site-clean toggle (keyed by group key)
   const [siteCleanEdits, setSiteCleanEdits] = useState<Record<string, boolean>>({});
+  // Per-group project fix (admin/owner only — keyed by group key)
+  const [fixProjectEdits, setFixProjectEdits] = useState<Record<string, string>>({});
+  const [fixingProject, setFixingProject] = useState<Set<string>>(new Set());
   // Per-record time edits (keyed by record id)
   const [recEdits, setRecEdits] = useState<Record<string, { check_in_time: string; check_out_time: string }>>({});
   // Records currently being saved
@@ -1175,6 +1180,30 @@ function AdminView() {
         status === 'approved' ? 'success' : 'info');
       loadData();
     } finally { setApproving(null); }
+  }
+
+  // Fix project for all records in a group (admin/owner only)
+  async function saveGroupProject(grp: AttGroup) {
+    const newProjectId = fixProjectEdits[grp.key] ?? '';
+    setFixingProject(prev => { const n = new Set(prev); n.add(grp.key); return n; });
+    try {
+      await Promise.all(grp.records.map(rec =>
+        fetch(`/api/attendance/${rec.id}`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            employee_id: rec.employee_id,
+            project_id:  newProjectId || null,
+            work_date:   rec.work_date,
+            notes:       rec.notes || null,
+          }),
+        })
+      ));
+      showAlert('✅ Project updated for all records in this group.', 'success');
+      setFixProjectEdits(prev => { const n = { ...prev }; delete n[grp.key]; return n; });
+      loadData();
+    } finally {
+      setFixingProject(prev => { const n = new Set(prev); n.delete(grp.key); return n; });
+    }
   }
 
   async function deleteRecord(id: string) {
@@ -1430,6 +1459,30 @@ function AdminView() {
                                   }}>
                                   {approving === grp.key + 'approved' ? '…' : `✓ Save Times & Approve ${grp.workerCount} Records`}
                                 </button>
+                              </div>
+                            )}
+
+                            {/* Fix Project — admin/owner can reassign project for entire group */}
+                            {isAdminOrOwner && (isPending || grp.status === 'approved') && (
+                              <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 flex flex-wrap items-center gap-2">
+                                <span className="text-xs font-semibold text-blue-700 shrink-0">📁 Project:</span>
+                                <select
+                                  className="form-control text-sm flex-1 min-w-[180px]"
+                                  value={fixProjectEdits[grp.key] ?? (grp.project_id || '')}
+                                  onChange={e => setFixProjectEdits(prev => ({ ...prev, [grp.key]: e.target.value }))}>
+                                  <option value="">No project</option>
+                                  {projList.map(p => (
+                                    <option key={p.id} value={p.id}>{p.name}{p.code ? ` (${p.code})` : ''}</option>
+                                  ))}
+                                </select>
+                                {fixProjectEdits[grp.key] !== undefined && fixProjectEdits[grp.key] !== (grp.project_id || '') && (
+                                  <button
+                                    className="btn btn-primary btn-sm shrink-0"
+                                    disabled={fixingProject.has(grp.key)}
+                                    onClick={() => saveGroupProject(grp)}>
+                                    {fixingProject.has(grp.key) ? 'Saving…' : '✓ Save Project'}
+                                  </button>
+                                )}
                               </div>
                             )}
 
