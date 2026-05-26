@@ -33,6 +33,7 @@ function roleModules(role: string): Module[] {
   if (role === 'owner')  return ['hr', 'ops', 'finance'];
   if (role === 'admin')  return ['hr', 'ops'];
   if (role === 'editor') return ['ops'];
+  if (role === 'viewer') return ['hr', 'ops'];
   return ['hr'];
 }
 
@@ -63,6 +64,8 @@ const HR_VIEWER_NAV = [
 const OPS_ADMIN_NAV = [
   { href: '/operations',               label: 'Dashboard' },
   { href: '/operations/projects',      label: 'Projects' },
+  { href: '/operations/manpower',      label: 'Manpower' },
+  { href: '/operations/bonus',         label: 'Bonus' },
   { href: '/operations/daily-log',     label: 'Log History' },
   { href: '/operations/daily-log/new', label: 'Submit Log' },
 ];
@@ -70,6 +73,9 @@ const OPS_EDITOR_NAV = [
   { href: '/operations',               label: 'Dashboard' },
   { href: '/operations/daily-log/new', label: 'Submit Log' },
   { href: '/operations/daily-log',     label: 'Log History' },
+];
+const OPS_VIEWER_NAV = [
+  { href: '/operations/my-project', label: 'My Project' },
 ];
 const FINANCE_NAV = [{ href: '/finance', label: 'Finance' }];
 
@@ -105,8 +111,14 @@ export default function Navbar() {
   const modules   = loaded ? roleModules(role) : [];
   const curModule = detectModule(pathname);
 
+  const isViewer = role === 'viewer';
+
   function getNavLinks() {
-    if (curModule === 'ops')     return isEditor ? OPS_EDITOR_NAV : OPS_ADMIN_NAV;
+    if (curModule === 'ops') {
+      if (isViewer)  return OPS_VIEWER_NAV;
+      if (isEditor)  return OPS_EDITOR_NAV;
+      return OPS_ADMIN_NAV;
+    }
     if (curModule === 'finance') return FINANCE_NAV;
     if (isAdmin)    return HR_ADMIN_NAV;
     if (isApproval) return HR_APPROVAL_NAV;

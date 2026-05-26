@@ -17,6 +17,20 @@ export async function GET(req: NextRequest) {
   if (status) query = query.eq('status', status);
   else if (active_only) query = query.eq('status', 'active');
 
+  // Foreman (editor) sees only their own project
+  if (user.role === 'editor' && user.employee_id) {
+    query = query.eq('foreman_id', user.employee_id).eq('status', 'active');
+  }
+
+  // Viewer sees only their allocated project(s)
+  if (user.role === 'viewer' && user.employee_id) {
+    const { data: alloc } = await supabase.from('worker_project_allocation')
+      .select('project_id').eq('employee_id', user.employee_id).is('released_date', null);
+    const ids = (alloc || []).map(a => a.project_id);
+    if (!ids.length) return NextResponse.json([]);
+    query = query.in('id', ids);
+  }
+
   const { data: projects, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
