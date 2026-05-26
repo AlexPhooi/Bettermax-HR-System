@@ -88,18 +88,30 @@ export async function POST(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  // Optionally seed default milestones
-  if (body.seed_milestones) {
-    const defaults = [
-      'Demolition','Foundation & Footing','Reinforced Concrete Structure',
-      'Roofing','Brickwork','Plaster & Screeding',
-      'M&E Rough-in','Tiling & Finishing','Final Touch & Handover',
-    ];
-    await supabase.from('project_milestones').insert(
-      defaults.map((name, i) => ({
-        project_id: data.id, name, sequence_order: i + 1, status: 'pending',
-      }))
-    );
+  // Auto-seed milestones from phase_presets
+  const { data: presets } = await supabase
+    .from('phase_presets')
+    .select('*')
+    .order('sort_order');
+
+  if (presets && presets.length > 0) {
+    const startDate = body.start_date ? new Date(body.start_date) : new Date();
+    let cursor = new Date(startDate);
+    const phases = presets.map((preset: { name: string; sort_order: number; default_duration_days: number }) => {
+      const planned_start = cursor.toISOString().split('T')[0];
+      cursor.setDate(cursor.getDate() + preset.default_duration_days);
+      const planned_end = cursor.toISOString().split('T')[0];
+      return {
+        project_id:     data.id,
+        name:           preset.name,
+        sequence_order: preset.sort_order,
+        planned_start,
+        planned_end,
+        status:         'pending',
+        completion_pct: 0,
+      };
+    });
+    await supabase.from('project_milestones').insert(phases);
   }
 
   return NextResponse.json(data);
