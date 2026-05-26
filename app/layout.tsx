@@ -2,8 +2,8 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Bettermax Enterprise HR',
-  description: 'HR Management System',
+  title: 'Better Max Builder Portal',
+  description: 'Builder Portal — HR & Operations Management',
   icons: { icon: '/logo-icon.png' },
 };
 

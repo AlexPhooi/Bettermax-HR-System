@@ -5,7 +5,6 @@ import { useState, useEffect, useRef } from 'react';
 import { useRole } from '@/lib/role-context';
 
 // ── Brand icon SVG — pixel-traced from real Bettermax Logo.png ────────
-// viewBox 100×122: circle fills 0–96, triangle fans to 122
 function BrandIcon({ size = 36 }: { size?: number }) {
   const h = Math.round(size * 1.22);
   return (
@@ -16,18 +15,29 @@ function BrandIcon({ size = 36 }: { size?: number }) {
           <stop offset="100%" stopColor="#FFB800"/>
         </linearGradient>
       </defs>
-      {/* Dark olive-brown circle — matches logo colour #2D2100 */}
       <circle cx="50" cy="48" r="46" fill="#2D2100"/>
-      {/* White rounded arch — upper 55% of circle, large corner radius */}
       <rect x="26" y="14" width="48" height="38" rx="8" ry="8" fill="white"/>
-      {/* Gold beam — narrow at arch bottom, fans wide past circle edge */}
       <polygon points="34,52 66,52 90,122 10,122" fill="url(#bmg-nav)"/>
     </svg>
   );
 }
 
+// ── Module definitions ─────────────────────────────────────────────────
+type Module = 'hr' | 'ops' | 'finance';
+const MODULE_META: Record<Module, { label: string; home: string }> = {
+  hr:      { label: 'HR',         home: '/' },
+  ops:     { label: 'Operations', home: '/operations' },
+  finance: { label: 'Finance',    home: '/finance' },
+};
+function roleModules(role: string): Module[] {
+  if (role === 'owner')  return ['hr', 'ops', 'finance'];
+  if (role === 'admin')  return ['hr', 'ops'];
+  if (role === 'editor') return ['ops'];
+  return ['hr'];
+}
+
 // ── Nav link definitions ───────────────────────────────────────────────
-const ADMIN_NAV = [
+const HR_ADMIN_NAV = [
   { href: '/',           label: 'Dashboard' },
   { href: '/staff',      label: 'Staff' },
   { href: '/attendance', label: 'Attendance' },
@@ -36,33 +46,42 @@ const ADMIN_NAV = [
   { href: '/saving',     label: 'Saving' },
   { href: '/settings',   label: 'Settings' },
 ];
-const APPROVAL_NAV = [
+const HR_APPROVAL_NAV = [
   { href: '/',              label: 'Dashboard' },
   { href: '/attendance',    label: 'Attendance' },
   { href: '/my-attendance', label: 'My Attendance' },
   { href: '/my-salary',     label: 'My Salary' },
   { href: '/my-profile',    label: 'My Profile' },
 ];
-const EDITOR_NAV = [
-  { href: '/',              label: 'Dashboard' },
-  { href: '/attendance',    label: 'Attendance' },
-  { href: '/my-attendance', label: 'My Attendance' },
-  { href: '/my-salary',     label: 'My Salary' },
-  { href: '/my-saving',     label: 'My Saving' },
-  { href: '/my-profile',    label: 'My Profile' },
-];
-const VIEWER_NAV = [
+const HR_VIEWER_NAV = [
   { href: '/',              label: 'Dashboard' },
   { href: '/my-attendance', label: 'My Attendance' },
   { href: '/my-salary',     label: 'My Salary' },
   { href: '/my-saving',     label: 'My Saving' },
   { href: '/my-profile',    label: 'My Profile' },
 ];
+const OPS_ADMIN_NAV = [
+  { href: '/operations',               label: 'Dashboard' },
+  { href: '/operations/projects',      label: 'Projects' },
+  { href: '/operations/daily-log',     label: 'Log History' },
+  { href: '/operations/daily-log/new', label: 'Submit Log' },
+];
+const OPS_EDITOR_NAV = [
+  { href: '/operations',               label: 'Dashboard' },
+  { href: '/operations/daily-log/new', label: 'Submit Log' },
+  { href: '/operations/daily-log',     label: 'Log History' },
+];
+const FINANCE_NAV = [{ href: '/finance', label: 'Finance' }];
 
 interface ExpiryItem { id: string; full_name: string; permit_expire: string; }
 
 function daysDiff(dateStr: string) {
   return Math.floor((new Date(dateStr).getTime() - Date.now()) / 86400000);
+}
+function detectModule(pathname: string): Module {
+  if (pathname.startsWith('/operations')) return 'ops';
+  if (pathname.startsWith('/finance'))    return 'finance';
+  return 'hr';
 }
 
 export default function Navbar() {
@@ -74,18 +93,26 @@ export default function Navbar() {
   const [expiring,  setExpiring]  = useState<ExpiryItem[]>([]);
   const [expired,   setExpired]   = useState<ExpiryItem[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
-  const [binStaff,   setBinStaff]   = useState(0);
-  const [binAtt,     setBinAtt]     = useState(0);
-  const [binSalary,  setBinSalary]  = useState(0);
+  const [binStaff,  setBinStaff]  = useState(0);
+  const [binAtt,    setBinAtt]    = useState(0);
+  const [binSalary, setBinSalary] = useState(0);
   const bellRef = useRef<HTMLDivElement>(null);
 
   const isAdmin    = role === 'admin' || role === 'owner';
-  const isViewer   = role === 'viewer';
   const isApproval = role === 'approval';
-  const navLinks   = isAdmin ? ADMIN_NAV
-                   : isViewer ? VIEWER_NAV
-                   : isApproval ? APPROVAL_NAV
-                   : EDITOR_NAV;
+  const isEditor   = role === 'editor';
+
+  const modules   = loaded ? roleModules(role) : [];
+  const curModule = detectModule(pathname);
+
+  function getNavLinks() {
+    if (curModule === 'ops')     return isEditor ? OPS_EDITOR_NAV : OPS_ADMIN_NAV;
+    if (curModule === 'finance') return FINANCE_NAV;
+    if (isAdmin)    return HR_ADMIN_NAV;
+    if (isApproval) return HR_APPROVAL_NAV;
+    return HR_VIEWER_NAV;
+  }
+  const navLinks = getNavLinks();
 
   useEffect(() => {
     if (!loaded || !isAdmin) return;
@@ -116,7 +143,9 @@ export default function Navbar() {
   }
 
   const isActive = (href: string) =>
-    href === '/' ? pathname === '/' : pathname.startsWith(href);
+    href === '/' ? pathname === '/' :
+    href === '/operations' ? pathname === '/operations' :
+    pathname.startsWith(href);
 
   const totalAlerts = expiring.length + expired.length;
 
@@ -125,27 +154,40 @@ export default function Navbar() {
       {/* ── Top navigation bar ──────────────────────────────────── */}
       <nav style={{ background: '#1E1400', borderBottom: '2px solid #C9A84C' }}
         className="sticky top-0 z-50 shadow-md">
-        <div className="flex items-center h-14 px-4 md:px-6 gap-4">
+        <div className="flex items-center h-14 px-4 md:px-6 gap-3">
 
-          {/* Logo — taps to toggle mobile menu */}
-          <button
-            onClick={() => setOpen(o => !o)}
-            className="flex items-center gap-2.5 shrink-0 md:cursor-default"
-            aria-label="Menu">
+          {/* Logo */}
+          <button onClick={() => setOpen(o => !o)}
+            className="flex items-center gap-2.5 shrink-0 md:cursor-default" aria-label="Menu">
             <BrandIcon size={32} />
             <div className="hidden md:block leading-tight">
               <p style={{ fontFamily: 'Georgia, serif', fontSize: 13, fontWeight: 700, letterSpacing: 1, margin: 0 }}>
                 <span style={{ color: '#E8D5A3' }}>BETTER</span><span style={{ color: '#FFB800' }}>MAX</span>
               </p>
-              <p style={{ fontFamily: 'Arial, sans-serif', color: '#C49A6C', fontSize: 8, letterSpacing: 3, margin: 0 }}>
-                ENTERPRISE
+              <p style={{ fontFamily: 'Arial, sans-serif', color: '#C49A6C', fontSize: 7.5, letterSpacing: 2.5, margin: 0 }}>
+                BUILDER PORTAL
               </p>
             </div>
-            {/* Mobile: just "BETTERMAX" next to icon */}
             <span className="md:hidden" style={{ fontFamily: 'Georgia, serif', fontSize: 13, fontWeight: 700, letterSpacing: 1 }}>
               <span style={{ color: '#E8D5A3' }}>BETTER</span><span style={{ color: '#FFB800' }}>MAX</span>
             </span>
           </button>
+
+          {/* ── Module switcher (desktop) ─── */}
+          {loaded && modules.length > 1 && (
+            <div className="hidden md:flex items-center gap-1 shrink-0"
+              style={{ borderLeft: '1px solid #3D2B00', paddingLeft: 10 }}>
+              {modules.map(m => (
+                <Link key={m} href={MODULE_META[m].home}
+                  style={curModule === m
+                    ? { background: '#C9A84C', color: '#1E1400', fontWeight: 700 }
+                    : { background: '#3D2B00', color: '#C49A6C' }}
+                  className="px-2.5 py-1 rounded text-xs transition-colors whitespace-nowrap">
+                  {MODULE_META[m].label}
+                </Link>
+              ))}
+            </div>
+          )}
 
           {/* Desktop nav links */}
           <ul className="hidden md:flex gap-0.5 flex-1">
@@ -159,7 +201,6 @@ export default function Navbar() {
                   onMouseEnter={e => { if (!isActive(l.href)) (e.currentTarget as HTMLElement).style.color = '#E8D5A3'; }}
                   onMouseLeave={e => { if (!isActive(l.href)) (e.currentTarget as HTMLElement).style.color = '#C49A6C'; }}>
                   {l.label}
-                  {/* Pending badge */}
                   {isAdmin && l.href === '/attendance' && pendingCount > 0 && (
                     <span style={{ background: '#C9A84C', color: '#1E1400' }}
                       className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full text-[10px] font-bold leading-4 text-center">
@@ -188,8 +229,6 @@ export default function Navbar() {
 
           {/* Right side */}
           <div className="ml-auto flex items-center gap-2">
-
-            {/* Username chip — desktop */}
             {loaded && username && (
               <span className="hidden md:block text-xs px-2.5 py-1 rounded"
                 style={{ color: '#C49A6C', background: '#3D2B00' }}>
@@ -197,23 +236,18 @@ export default function Navbar() {
               </span>
             )}
 
-            {/* Bell — admin permit alerts */}
             {isAdmin && (
               <div className="relative" ref={bellRef}>
-                <button
-                  onClick={() => setBellOpen(b => !b)}
-                  className="relative p-1.5 rounded transition-colors"
-                  style={{ color: '#C9A84C' }}
+                <button onClick={() => setBellOpen(b => !b)}
+                  className="relative p-1.5 rounded" style={{ color: '#C9A84C' }}
                   title="Permit expiry alerts">
                   <span className="text-lg leading-none">🔔</span>
                   {totalAlerts > 0 && (
-                    <span className={`absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full text-[10px] font-bold leading-4 text-center text-white
-                      ${expired.length > 0 ? 'bg-red-600' : 'bg-orange-500'}`}>
+                    <span className={`absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full text-[10px] font-bold leading-4 text-center text-white ${expired.length > 0 ? 'bg-red-600' : 'bg-orange-500'}`}>
                       {totalAlerts}
                     </span>
                   )}
                 </button>
-
                 {bellOpen && (
                   <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-lg shadow-xl z-50 overflow-hidden"
                     style={{ border: '1px solid #C9A84C' }}>
@@ -223,9 +257,7 @@ export default function Navbar() {
                       </p>
                     </div>
                     {totalAlerts === 0 ? (
-                      <div className="px-4 py-6 text-center text-sm" style={{ color: '#C49A6C' }}>
-                        ✅ All permits are valid
-                      </div>
+                      <div className="px-4 py-6 text-center text-sm" style={{ color: '#C49A6C' }}>✅ All permits are valid</div>
                     ) : (
                       <div className="max-h-80 overflow-y-auto divide-y divide-[#FAF5E9]">
                         {expired.length > 0 && (
@@ -238,9 +270,7 @@ export default function Navbar() {
                                   <p className="text-sm font-medium" style={{ color: '#2C1A0E' }}>{e.full_name}</p>
                                   <p className="text-xs text-red-600">Expired {Math.abs(daysDiff(e.permit_expire))} days ago</p>
                                 </div>
-                                <span className="text-xs text-gray-400 shrink-0 ml-2">
-                                  {new Date(e.permit_expire).toLocaleDateString('en-GB')}
-                                </span>
+                                <span className="text-xs text-gray-400 shrink-0 ml-2">{new Date(e.permit_expire).toLocaleDateString('en-GB')}</span>
                               </div>
                             ))}
                           </>
@@ -259,9 +289,7 @@ export default function Navbar() {
                                       {d === 0 ? 'Expires today' : `${d} day${d !== 1 ? 's' : ''} left`}
                                     </p>
                                   </div>
-                                  <span className="text-xs text-gray-400 shrink-0 ml-2">
-                                    {new Date(e.permit_expire).toLocaleDateString('en-GB')}
-                                  </span>
+                                  <span className="text-xs text-gray-400 shrink-0 ml-2">{new Date(e.permit_expire).toLocaleDateString('en-GB')}</span>
                                 </div>
                               );
                             })}
@@ -270,7 +298,7 @@ export default function Navbar() {
                       </div>
                     )}
                     <div className="px-4 py-2.5" style={{ borderTop: '1px solid #E8D5A3', background: '#FAF5E9' }}>
-                      <Link href="/employees" onClick={() => setBellOpen(false)}
+                      <Link href="/staff" onClick={() => setBellOpen(false)}
                         className="text-xs font-semibold hover:underline" style={{ color: '#C9A84C' }}>
                         View all employees →
                       </Link>
@@ -291,18 +319,30 @@ export default function Navbar() {
         </div>
       </nav>
 
-      {/* ── Mobile dropdown menu (fixed overlay, doesn't shift layout) ── */}
+      {/* ── Mobile dropdown ──────────────────────────────────────── */}
       {open && (
         <div className="md:hidden fixed top-14 left-0 right-0 z-40 shadow-lg"
           style={{ background: '#1E1400', borderBottom: '2px solid #C9A84C' }}>
+          {loaded && modules.length > 1 && (
+            <div className="flex gap-2 px-6 py-3" style={{ borderBottom: '1px solid #3D2B00' }}>
+              {modules.map(m => (
+                <Link key={m} href={MODULE_META[m].home} onClick={() => setOpen(false)}
+                  style={curModule === m
+                    ? { background: '#C9A84C', color: '#1E1400', fontWeight: 700 }
+                    : { background: '#3D2B00', color: '#C49A6C' }}
+                  className="px-3 py-1.5 rounded text-xs">
+                  {MODULE_META[m].label}
+                </Link>
+              ))}
+            </div>
+          )}
           {navLinks.map(l => (
             <Link key={l.href} href={l.href} onClick={() => setOpen(false)}
-              className="flex items-center justify-between px-6 py-3 text-sm transition-colors relative"
+              className="flex items-center justify-between px-6 py-3 text-sm"
               style={isActive(l.href)
                 ? { background: '#3D2B00', color: '#C9A84C', fontWeight: 700, borderLeft: '3px solid #C9A84C' }
                 : { color: '#C49A6C', borderLeft: '3px solid transparent' }}>
               {l.label}
-              {/* Badges on mobile */}
               {isAdmin && l.href === '/attendance' && pendingCount > 0 && (
                 <span style={{ background: '#C9A84C', color: '#1E1400' }}
                   className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-bold">
@@ -311,7 +351,6 @@ export default function Navbar() {
               )}
             </Link>
           ))}
-          {/* Username on mobile */}
           {loaded && username && (
             <div className="px-6 py-2.5 text-xs" style={{ color: '#6B4A00', borderTop: '1px solid #3D2B00' }}>
               Logged in as <strong style={{ color: '#C49A6C' }}>{username}</strong>

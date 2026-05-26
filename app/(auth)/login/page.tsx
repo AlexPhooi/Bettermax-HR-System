@@ -42,7 +42,7 @@ export default function LoginPage() {
         <div style={{ marginBottom: 28 }}>
           <Image
             src="/logo-letterhead.png"
-            alt="Bettermax Enterprise"
+            alt="Better Max Builder Portal"
             width={3780}
             height={1890}
             priority
@@ -63,7 +63,7 @@ export default function LoginPage() {
             Sign In
           </h2>
           <p style={{ fontFamily: 'Arial, sans-serif', fontSize: 13, color: '#6B4226', marginBottom: 24 }}>
-            HR Management System
+            Better Max Builder Portal
           </p>
 
           {error && <div className="alert alert-danger">{error}</div>}
@@ -105,7 +105,7 @@ export default function LoginPage() {
 
         {/* ── Footer ──────────────────────────────────────────────── */}
         <p style={{ textAlign: 'center', marginTop: 20, fontSize: 11, color: '#C49A6C', fontFamily: 'Arial, sans-serif' }}>
-          © {new Date().getFullYear()} Bettermax Enterprise
+          © {new Date().getFullYear()} Better Max Enterprise
         </p>
       </div>
     </div>
