@@ -12,6 +12,12 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const updates: Record<string, any> = {};
   if (body.payment_slip_url !== undefined) updates.payment_slip_url = body.payment_slip_url;
+  if (body.status          !== undefined) updates.status          = body.status;
+  if (body.total_days      !== undefined) updates.total_days      = Number(body.total_days);
+  if (body.daily_rate      !== undefined) updates.daily_rate      = Number(body.daily_rate);
+  if (body.total_advances  !== undefined) updates.total_advances  = Number(body.total_advances);
+  if (body.gross_salary    !== undefined) updates.gross_salary    = Number(body.gross_salary);
+  if (body.net_salary      !== undefined) updates.net_salary      = Number(body.net_salary);
 
   if (!Object.keys(updates).length) return NextResponse.json({ error: 'Nothing to update.' }, { status: 400 });
 

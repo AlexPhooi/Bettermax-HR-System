@@ -8,6 +8,7 @@ interface HistoryRecord {
   id: string;
   employee_id: string;
   month: string;
+  status: string;
   total_days: number;
   daily_rate: number;
   base_salary: number;
@@ -68,6 +69,11 @@ export default function SalaryPage() {
   // Slip upload
   const [uploading, setUploading] = useState<Record<string, boolean>>({});
   const fileRefs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  // Inline edit
+  const [editingId,  setEditingId]  = useState<string | null>(null);
+  const [editValues, setEditValues] = useState<{ total_days: string; total_advances: string }>({ total_days: '', total_advances: '' });
+  const [saving,     setSaving]     = useState<string | null>(null);
 
   // Alert
   const [alertMsg,  setAlertMsg]  = useState('');
@@ -181,6 +187,42 @@ export default function SalaryPage() {
         setHistory(h => h.map(r => r.id === recId ? { ...r, payment_slip_url: upData.url } : r));
       }
     } finally { setUploading(u => ({ ...u, [key]: false })); }
+  }
+
+  // ── Inline edit save ────────────────────────────────────────────────────────
+  async function handleSaveEdit(row: HistoryRecord) {
+    setSaving(row.id);
+    const days     = parseFloat(editValues.total_days)     || 0;
+    const advances = parseFloat(editValues.total_advances) || 0;
+    const rate     = Number(row.daily_rate);
+    const gross    = Math.round(rate * days * 100) / 100;
+    const net      = Math.round((gross - advances) * 100) / 100;
+    const res = await fetch(`/api/salary/records/${row.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ total_days: days, total_advances: advances, gross_salary: gross, net_salary: net }),
+    });
+    if (res.ok) {
+      setHistory(h => h.map(r => r.id === row.id
+        ? { ...r, total_days: days, total_advances: advances, gross_salary: gross, net_salary: net }
+        : r));
+      setEditingId(null);
+      showAlert('Record saved!');
+    } else { showAlert('Save failed.', 'danger'); }
+    setSaving(null);
+  }
+
+  // ── Mark as Done ─────────────────────────────────────────────────────────────
+  async function handleMarkDone(id: string) {
+    setSaving(id);
+    const res = await fetch(`/api/salary/records/${id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'paid' }),
+    });
+    if (res.ok) {
+      setHistory(h => h.map(r => r.id === id ? { ...r, status: 'paid' } : r));
+      showAlert('Marked as Done ✓');
+    } else { showAlert('Failed.', 'danger'); }
+    setSaving(null);
   }
 
   // ── Derived: history totals ──────────────────────────────────────────────────
@@ -459,27 +501,47 @@ export default function SalaryPage() {
                     <th className="px-3 py-2.5 text-right text-xs text-white font-semibold">Net</th>
                     <th className="px-3 py-2.5 text-left text-xs text-white font-semibold">Transfer To</th>
                     <th className="px-3 py-2.5 text-center text-xs text-white font-semibold no-print">Slip</th>
+                    <th className="px-3 py-2.5 text-center text-xs text-white font-semibold no-print">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {isHistory ? histRows.map((row, idx) => {
-                    const key = row.id;
-                    const isUp = uploading[key];
+                    const key      = row.id;
+                    const isUp     = uploading[key];
+                    const isEditing = editingId === key;
+                    const isSaving  = saving === key;
+                    const isDone    = row.status === 'paid';
+
+                    const editDays  = isEditing ? parseFloat(editValues.total_days)     || 0 : Number(row.total_days);
+                    const editAdv   = isEditing ? parseFloat(editValues.total_advances) || 0 : Number(row.total_advances);
+                    const editGross = isEditing ? Math.round(Number(row.daily_rate) * editDays * 100) / 100 : Number(row.gross_salary);
+                    const editNet   = isEditing ? Math.round((editGross - editAdv) * 100) / 100 : Number(row.net_salary);
+
                     return (
-                      <tr key={key} style={{ background: idx % 2 === 0 ? '#fff' : '#f8fafc', borderBottom: '1px solid #f1f5f9' }}>
+                      <tr key={key} style={{ background: isDone ? '#f0fdf4' : idx % 2 === 0 ? '#fff' : '#f8fafc', borderBottom: '1px solid #f1f5f9' }}>
                         <td className="px-3 py-2.5 text-xs text-gray-500 font-mono">{row.month}</td>
                         <td className="px-3 py-2.5 font-medium text-gray-800">{row.employees?.full_name ?? '-'}</td>
                         <td className="px-3 py-2.5 text-right text-gray-600">{formatRM(Number(row.daily_rate))}</td>
-                        <td className="px-3 py-2.5 text-right font-semibold text-primary">{Number(row.total_days).toFixed(2)}</td>
-                        <td className="px-3 py-2.5 text-right text-gray-400">-</td>
-                        <td className="px-3 py-2.5 text-right text-accent font-semibold">{formatRM(Number(row.gross_salary))}</td>
-                        <td className="px-3 py-2.5 text-right">
-                          {Number(row.total_advances) > 0
-                            ? <span className="text-danger">({formatRM(Number(row.total_advances))})</span>
-                            : <span className="text-gray-300">-</span>}
+                        <td className="px-3 py-2.5 text-right font-semibold text-primary">
+                          {isEditing
+                            ? <input type="number" step="0.25" min="0" className="w-16 text-right border border-gray-300 rounded px-1 py-0.5 text-xs"
+                                value={editValues.total_days}
+                                onChange={e => setEditValues(v => ({ ...v, total_days: e.target.value }))} />
+                            : editDays.toFixed(2)}
                         </td>
-                        <td className={`px-3 py-2.5 text-right font-bold ${Number(row.net_salary) < 0 ? 'text-danger' : 'text-accent'}`}>
-                          {formatRM(Number(row.net_salary))}
+                        <td className="px-3 py-2.5 text-right text-gray-400">-</td>
+                        <td className="px-3 py-2.5 text-right text-accent font-semibold">{formatRM(editGross)}</td>
+                        <td className="px-3 py-2.5 text-right">
+                          {isEditing
+                            ? <input type="number" step="0.01" min="0" className="w-20 text-right border border-gray-300 rounded px-1 py-0.5 text-xs"
+                                value={editValues.total_advances}
+                                onChange={e => setEditValues(v => ({ ...v, total_advances: e.target.value }))} />
+                            : editAdv > 0
+                              ? <span className="text-danger">({formatRM(editAdv)})</span>
+                              : <span className="text-gray-300">-</span>}
+                        </td>
+                        <td className={`px-3 py-2.5 text-right font-bold ${editNet < 0 ? 'text-danger' : 'text-accent'}`}>
+                          {formatRM(editNet)}
                         </td>
                         <td className="px-3 py-2.5 text-xs text-gray-500">
                           {row.employees?.bank_name && <div className="font-medium text-gray-700">{row.employees.bank_name}</div>}
@@ -500,6 +562,35 @@ export default function SalaryPage() {
                             <button className="text-xs text-gray-400 hover:text-primary" onClick={() => fileRefs.current[key]?.click()} disabled={isUp}>
                               {isUp ? '…' : '📎 Upload'}
                             </button>
+                          )}
+                        </td>
+                        {/* Actions */}
+                        <td className="px-3 py-2.5 text-center no-print">
+                          {isEditing ? (
+                            <div className="flex items-center justify-center gap-1">
+                              <button
+                                className="text-xs bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded"
+                                onClick={() => handleSaveEdit(row)} disabled={isSaving}>
+                                {isSaving ? '…' : '💾 Save'}
+                              </button>
+                              <button className="text-xs text-gray-400 hover:text-gray-600 px-1" onClick={() => setEditingId(null)}>✕</button>
+                            </div>
+                          ) : isDone ? (
+                            <span className="text-xs font-bold text-green-700 bg-green-100 px-2 py-1 rounded-full">✅ Done</span>
+                          ) : (
+                            <div className="flex items-center justify-center gap-1">
+                              <button
+                                className="text-xs text-gray-400 hover:text-primary px-1"
+                                title="Edit"
+                                onClick={() => { setEditingId(key); setEditValues({ total_days: String(row.total_days), total_advances: String(row.total_advances) }); }}>
+                                ✏️
+                              </button>
+                              <button
+                                className="text-xs bg-green-500 hover:bg-green-600 text-white px-2 py-1 rounded"
+                                onClick={() => handleMarkDone(key)} disabled={isSaving}>
+                                {isSaving ? '…' : '✓ Done'}
+                              </button>
+                            </div>
                           )}
                         </td>
                       </tr>
@@ -572,6 +663,7 @@ export default function SalaryPage() {
                     </td>
                     <td className="px-3 py-2.5 text-right text-sm text-accent">{formatRM(summaryTotals.net)}</td>
                     <td className="px-3 py-2.5" />
+                    <td className="px-3 py-2.5 no-print" />
                     <td className="px-3 py-2.5 no-print" />
                   </tr>
                 </tfoot>
