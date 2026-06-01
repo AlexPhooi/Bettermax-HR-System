@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useRole } from '@/lib/role-context';
 
@@ -13,7 +13,7 @@ const WEATHER_OPTIONS = [
   { value: 'stopped work', label: '⛔ Stopped Work', },
 ];
 
-export default function NewDailyLogPage() {
+function NewDailyLogPageInner() {
   const { role, loaded } = useRole();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -292,5 +292,20 @@ export default function NewDailyLogPage() {
         </form>
       )}
     </div>
+  );
+}
+
+export default function NewDailyLogPage() {
+  return (
+    <Suspense fallback={
+      <div className="max-w-lg mx-auto px-4 py-8">
+        <div style={{ height: 24, background: '#E8D5A3', borderRadius: 4, marginBottom: 24, width: 200 }} />
+        {[...Array(5)].map((_, i) => (
+          <div key={i} style={{ height: 48, background: '#F5EDD6', borderRadius: 6, marginBottom: 12 }} />
+        ))}
+      </div>
+    }>
+      <NewDailyLogPageInner />
+    </Suspense>
   );
 }
