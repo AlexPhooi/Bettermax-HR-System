@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   // Fetch foreman names and latest log dates
-  const foremanIds = [...new Set((projects || []).map(p => p.foreman_id).filter(Boolean))];
+  const foremanIds = Array.from(new Set((projects || []).map(p => p.foreman_id).filter(Boolean)));
   let foremanMap: Record<string, string> = {};
   if (foremanIds.length) {
     const { data: emps } = await supabase.from('employees')

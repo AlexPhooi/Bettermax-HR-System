@@ -62,7 +62,7 @@ export async function GET(req: NextRequest) {
   }
 
   // Fetch foreman names
-  const foremanIds = [...new Set(projects.map(p => p.foreman_id).filter(Boolean))] as string[];
+  const foremanIds = Array.from(new Set(projects.map(p => p.foreman_id).filter(Boolean))) as string[];
   let foremanMap: Record<string, string> = {};
   if (foremanIds.length) {
     const { data: emps } = await supabase.from('employees').select('id, full_name').in('id', foremanIds);
