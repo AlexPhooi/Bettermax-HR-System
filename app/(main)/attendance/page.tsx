@@ -1213,7 +1213,7 @@ function AdminView() {
 
   // Add missing workers to an existing pending/approved group (admin/owner only)
   async function saveAddWorkers(grp: AttGroup) {
-    const selectedIds = [...(addWorkerSels[grp.key] || new Set())];
+    const selectedIds = Array.from(addWorkerSels[grp.key] || new Set());
     if (!selectedIds.length) return;
     const times = addWorkerTimes[grp.key] || {
       checkIn:  grp.records[0]?.check_in_time?.slice(0, 5)  || '08:00',
