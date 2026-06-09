@@ -2,6 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getUser, isManager } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 
+// Standard daily rates by rank — auto-applied on rank change
+const RANK_RATES: Record<string, number> = {
+  Support: 90,
+  Skilled: 100,
+  Pro:     120,
+  Core:    130,
+  Leader:  140,
+};
+
 // GET single employee by ID — admin/owner
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   const user = await getUser(req);
@@ -20,14 +29,20 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   const body = await req.json();
   if (!body.full_name?.trim()) return NextResponse.json({ error: 'Full name is required.' }, { status: 400 });
 
+  // Auto-set daily_rate from rank if rank is being changed
+  const rank       = body.rank || null;
+  const daily_rate = rank && RANK_RATES[rank] !== undefined
+    ? RANK_RATES[rank]
+    : (Number(body.daily_rate) || 0);
+
   const { data, error } = await supabase.from('employees').update({
     full_name:       body.full_name.trim(),
     passport_no:     body.passport_no?.trim()    || null,
     permit_expire:   body.permit_expire           || null,
     date_of_birth:   body.date_of_birth           || null,
     phone:           body.phone?.trim()           || null,
-    daily_rate:      Number(body.daily_rate)      || 0,
-    rank:            body.rank                    || null,
+    daily_rate,
+    rank,
     bank_name:       body.bank_name               || null,
     bank_account:    body.bank_account?.trim()    || null,
     passport_doc_url: body.passport_doc_url?.trim() || null,

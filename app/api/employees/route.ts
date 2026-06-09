@@ -2,6 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getUser } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 
+const RANK_RATES: Record<string, number> = {
+  Support: 90,
+  Skilled: 100,
+  Pro:     120,
+  Core:    130,
+  Leader:  140,
+};
+
 export async function GET(req: NextRequest) {
   const user = await getUser(req);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -35,7 +43,11 @@ export async function POST(req: NextRequest) {
   if (!await getUser(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const body = await req.json();
   if (!body.full_name?.trim()) return NextResponse.json({ error: 'Full name is required.' }, { status: 400 });
-  if (!body.daily_rate || Number(body.daily_rate) <= 0)
+  const rank       = body.rank || null;
+  const daily_rate = rank && RANK_RATES[rank] !== undefined
+    ? RANK_RATES[rank]
+    : Number(body.daily_rate);
+  if (!daily_rate || daily_rate <= 0)
     return NextResponse.json({ error: 'Valid daily rate is required.' }, { status: 400 });
   const { data, error } = await supabase.from('employees').insert({
     full_name:       body.full_name.trim(),
@@ -43,8 +55,8 @@ export async function POST(req: NextRequest) {
     permit_expire:   body.permit_expire        || null,
     date_of_birth:   body.date_of_birth        || null,
     phone:           body.phone?.trim()        || null,
-    daily_rate:      Number(body.daily_rate),
-    rank:            body.rank                 || null,
+    daily_rate,
+    rank,
     bank_name:       body.bank_name            || null,
     bank_account:    body.bank_account?.trim() || null,
     passport_doc_url: body.passport_doc_url?.trim() || null,
