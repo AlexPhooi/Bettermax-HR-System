@@ -1811,6 +1811,28 @@ function AdminView() {
                   ];
                 })}
               </tbody>
+              <tfoot>
+                <tr style={{ borderTop: '2px solid #C9A84C', background: '#FAF5E9' }}>
+                  <td className="table-td font-bold text-sm" style={{ color: '#2C1A0E' }} colSpan={2}>
+                    TOTAL ({groups.length} day{groups.length !== 1 ? 's' : ''})
+                  </td>
+                  <td className="table-td text-right font-bold text-sm" style={{ color: '#2C1A0E' }}>
+                    {groups.reduce((s, g) => s + g.workerCount, 0)}
+                  </td>
+                  <td className="table-td text-right font-bold text-sm" style={{ color: '#6B4A00' }}>
+                    {groups.reduce((s, g) => s + g.totalGong, 0).toFixed(2)} 工
+                  </td>
+                  <td className="table-td text-right font-bold text-sm" style={{ color: '#C9A84C' }}>
+                    {formatRM(groups.reduce((s, g) => s + g.totalSalary, 0))}
+                  </td>
+                  <td className="table-td text-right font-bold text-sm" style={{ color: '#16a34a' }}>
+                    {groups.reduce((s, g) => s + g.totalSiteBonus, 0) > 0
+                      ? `+${formatRM(groups.reduce((s, g) => s + g.totalSiteBonus, 0))}`
+                      : '—'}
+                  </td>
+                  <td className="table-td" colSpan={2} />
+                </tr>
+              </tfoot>
             </table>
           </div>
         </div>
