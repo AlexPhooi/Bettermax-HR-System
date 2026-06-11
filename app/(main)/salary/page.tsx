@@ -55,6 +55,7 @@ export default function SalaryPage() {
   const [loading,     setLoading]     = useState(true);
   const [curFinalized, setCurFinalized] = useState(false);
   const [finalizing,  setFinalizing]  = useState(false);
+  const [recalculating, setRecalculating] = useState(false);
 
   // View
   const [view,        setView]        = useState<'overview' | 'detail'>('overview');
@@ -138,6 +139,35 @@ export default function SalaryPage() {
       }
       if (Array.isArray(histRes)) setHistory(histRes);
     } finally { setFinalizing(false); }
+  }
+
+  // ── Recalculate from latest attendance ──────────────────────────────────────
+  async function recalculate(month: string) {
+    if (!confirm(`Recalculate salary for ${month} from latest attendance data?\n\nThis updates days, gross, advances and net for all draft/finalized records.`)) return;
+    setRecalculating(true);
+    try {
+      const res  = await fetch('/api/salary/recalculate', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ month }),
+      });
+      const data = await res.json();
+      if (!res.ok) { showAlert(data.error || 'Recalculate failed.', 'danger'); return; }
+      showAlert(`✅ Recalculated ${data.updated} records for ${month}`);
+      // Refresh both current records and history
+      const [recRes, histRes] = await Promise.all([
+        fetch(`/api/salary/records?month=${month}`).then(r => r.json()),
+        fetch('/api/salary/records').then(r => r.json()),
+      ]);
+      if (Array.isArray(recRes)) {
+        const map: Record<string, { id: string; payment_slip_url: string | null }> = {};
+        for (const r of recRes) map[r.employee_id] = { id: r.id, payment_slip_url: r.payment_slip_url };
+        setCurRecordMap(map);
+      }
+      if (Array.isArray(histRes)) setHistory(histRes);
+      // Reload current month data
+      const calcRes = await fetch(`/api/salary/calculate?month=${month}`).then(r => r.json());
+      if (calcRes?.data) setCurrent(calcRes);
+    } finally { setRecalculating(false); }
   }
 
   // ── Bin ──────────────────────────────────────────────────────────────────────
@@ -357,11 +387,20 @@ export default function SalaryPage() {
         <div className="flex items-center gap-3 mb-5 no-print flex-wrap">
           <button className="btn btn-secondary text-sm py-1.5 px-3" onClick={() => setView('overview')}>← Back</button>
           <h1 className="text-xl font-bold text-primary">Salary — {label}</h1>
-          <div className="ml-auto flex gap-2">
+          <div className="ml-auto flex gap-2 flex-wrap">
             {!isHistory && (
-              <button className={`btn text-sm ${curFinalized ? 'btn-secondary' : 'btn-success'}`} onClick={finalize} disabled={finalizing}>
-                {finalizing ? 'Updating…' : curFinalized ? '🔄 Update (add missing)' : '✓ Finalize'}
-              </button>
+              <>
+                <button
+                  className="btn text-sm btn-outline"
+                  style={{ borderColor: '#C9A84C', color: '#6B4A00' }}
+                  onClick={() => current && recalculate(current.month)}
+                  disabled={recalculating}>
+                  {recalculating ? '⏳ Recalculating…' : '🔄 Recalculate from Attendance'}
+                </button>
+                <button className={`btn text-sm ${curFinalized ? 'btn-secondary' : 'btn-success'}`} onClick={finalize} disabled={finalizing}>
+                  {finalizing ? 'Updating…' : curFinalized ? 'Update (add missing)' : '✓ Finalize'}
+                </button>
+              </>
             )}
             {!isHistory && curFinalized && (
               <span className="badge bg-green-100 text-green-700 px-3 py-1.5 text-sm">✓ Finalized</span>
