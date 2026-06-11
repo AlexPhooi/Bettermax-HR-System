@@ -59,6 +59,9 @@ export async function GET(req: NextRequest) {
     if (sp.get('project_id'))  query = query.eq('project_id',  sp.get('project_id')!);
   }
 
+  const limitParam = sp.get('limit');
+  if (limitParam) query = query.limit(Number(limitParam));
+
   const { data, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(data);

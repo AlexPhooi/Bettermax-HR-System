@@ -1276,15 +1276,21 @@ function AdminView() {
   }, [binOpen]);
 
   // Auto-select workers from the most recent session of the chosen project
+  // Fetches directly from API so it works regardless of the current month filter
   useEffect(() => {
     if (!showAddModal) return;
     if (!addForm.project_id) { setAddSelectedIds(new Set()); return; }
-    // Find all records for this project, pick the most recent date
-    const projectRecs = records.filter(r => r.project_id === addForm.project_id);
-    if (projectRecs.length === 0) { setAddSelectedIds(new Set()); return; }
-    const latestDate = projectRecs.reduce((max, r) => r.work_date > max ? r.work_date : max, '');
-    const latestIds  = projectRecs.filter(r => r.work_date === latestDate).map(r => r.employee_id);
-    setAddSelectedIds(new Set(latestIds));
+    fetch(`/api/attendance?project_id=${addForm.project_id}&limit=60`)
+      .then(r => r.json())
+      .then((recs: { work_date: string; employee_id: string; status: string }[]) => {
+        if (!Array.isArray(recs) || recs.length === 0) return;
+        const approved = recs.filter(r => r.status === 'approved' || r.status === 'pending');
+        if (approved.length === 0) return;
+        const latestDate = approved.reduce((max, r) => r.work_date > max ? r.work_date : max, '');
+        const latestIds  = approved.filter(r => r.work_date === latestDate).map(r => r.employee_id);
+        setAddSelectedIds(new Set(latestIds));
+      })
+      .catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [addForm.project_id, showAddModal]);
 
