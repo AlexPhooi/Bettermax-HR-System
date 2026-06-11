@@ -584,8 +584,11 @@ export default function SalaryPage() {
                               ? <span className="text-danger">({formatRM(editAdv)})</span>
                               : <span className="text-gray-300">-</span>}
                         </td>
-                        <td className={`px-3 py-2.5 text-right font-bold ${editNet < 0 ? 'text-danger' : 'text-accent'}`}>
-                          {formatRM(editNet)}
+                        <td className="px-3 py-2.5 text-right font-bold">
+                          <div className={editNet < 0 ? 'text-danger' : 'text-accent'}>{formatRM(Math.max(0, editNet))}</div>
+                          {editNet < 0 && (
+                            <div className="text-xs font-semibold text-danger mt-0.5">-{formatRM(Math.abs(editNet))} over</div>
+                          )}
                         </td>
                         <td className="px-3 py-2.5 text-xs text-gray-500">
                           {row.employees?.bank_name && <div className="font-medium text-gray-700">{row.employees.bank_name}</div>}
@@ -657,8 +660,16 @@ export default function SalaryPage() {
                             ? <span className="text-danger">({formatRM(row.total_advances)})</span>
                             : <span className="text-gray-300">-</span>}
                         </td>
-                        <td className={`px-3 py-2.5 text-right font-bold ${row.net_salary < 0 ? 'text-danger' : 'text-accent'}`}>
-                          {formatRM(row.net_salary)}
+                        <td className="px-3 py-2.5 text-right font-bold">
+                          <div className="text-accent">{formatRM(row.net_salary)}</div>
+                          {(() => {
+                            const over = Math.round((row.gross_salary - row.total_advances) * 100) / 100;
+                            return over < 0 ? (
+                              <div className="text-xs font-semibold text-danger mt-0.5">
+                                -{formatRM(Math.abs(over))} over
+                              </div>
+                            ) : null;
+                          })()}
                         </td>
                         <td className="px-3 py-2.5 text-xs text-gray-500">
                           {row.bank_name && <div className="font-medium text-gray-700">{row.bank_name}</div>}
