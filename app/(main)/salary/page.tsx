@@ -388,19 +388,23 @@ export default function SalaryPage() {
           <button className="btn btn-secondary text-sm py-1.5 px-3" onClick={() => setView('overview')}>← Back</button>
           <h1 className="text-xl font-bold text-primary">Salary — {label}</h1>
           <div className="ml-auto flex gap-2 flex-wrap">
+            {/* Recalculate — available on any non-paid month (history or current) */}
+            {(isHistory ? applied && filterMonth !== 'all' : true) && (
+              <button
+                className="btn text-sm btn-outline"
+                style={{ borderColor: '#C9A84C', color: '#6B4A00' }}
+                onClick={() => {
+                  const month = isHistory ? filterMonth : current?.month;
+                  if (month) recalculate(month);
+                }}
+                disabled={recalculating}>
+                {recalculating ? '⏳ Recalculating…' : '🔄 Recalculate from Attendance'}
+              </button>
+            )}
             {!isHistory && (
-              <>
-                <button
-                  className="btn text-sm btn-outline"
-                  style={{ borderColor: '#C9A84C', color: '#6B4A00' }}
-                  onClick={() => current && recalculate(current.month)}
-                  disabled={recalculating}>
-                  {recalculating ? '⏳ Recalculating…' : '🔄 Recalculate from Attendance'}
-                </button>
-                <button className={`btn text-sm ${curFinalized ? 'btn-secondary' : 'btn-success'}`} onClick={finalize} disabled={finalizing}>
-                  {finalizing ? 'Updating…' : curFinalized ? 'Update (add missing)' : '✓ Finalize'}
-                </button>
-              </>
+              <button className={`btn text-sm ${curFinalized ? 'btn-secondary' : 'btn-success'}`} onClick={finalize} disabled={finalizing}>
+                {finalizing ? 'Updating…' : curFinalized ? 'Update (add missing)' : '✓ Finalize'}
+              </button>
             )}
             {!isHistory && curFinalized && (
               <span className="badge bg-green-100 text-green-700 px-3 py-1.5 text-sm">✓ Finalized</span>

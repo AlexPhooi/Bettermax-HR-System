@@ -17,15 +17,14 @@ export async function POST(req: NextRequest) {
   const start = `${month}-01`;
   const end   = new Date(+y, +m, 0).toISOString().split('T')[0];
 
-  // Fetch existing salary records for this month (skip paid)
+  // Fetch existing salary records for this month (all statuses — allow recalc on history too)
   const { data: existing, error: srErr } = await supabase
     .from('salary_records')
     .select('id, employee_id, daily_rate, status')
     .eq('month', month)
-    .in('status', ['draft', 'finalized'])
     .is('deleted_at', null);
   if (srErr) return NextResponse.json({ error: srErr.message }, { status: 500 });
-  if (!existing?.length) return NextResponse.json({ error: 'No draft/finalized salary records found for this month.' }, { status: 404 });
+  if (!existing?.length) return NextResponse.json({ error: 'No salary records found for this month.' }, { status: 404 });
 
   // Fetch attendance & advances in parallel
   const [attRes, advRes] = await Promise.all([
