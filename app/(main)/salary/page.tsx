@@ -229,17 +229,18 @@ export default function SalaryPage() {
   // Exclude current month from history cards
   const pastHistory = useMemo(() => history.filter(r => r.month !== curMonth), [history, curMonth]);
   const totalPaid   = useMemo(() =>
-    pastHistory.filter(r => r.payment_slip_url).reduce((s, r) => s + Number(r.net_salary), 0),
+    pastHistory.filter(r => r.status === 'paid').reduce((s, r) => s + Number(r.net_salary), 0),
     [pastHistory]);
   const totalUnpaid = useMemo(() =>
-    pastHistory.filter(r => !r.payment_slip_url).reduce((s, r) => s + Number(r.net_salary), 0),
+    pastHistory.filter(r => r.status !== 'paid').reduce((s, r) => s + Number(r.net_salary), 0),
     [pastHistory]);
 
   // ── Derived: current month totals ───────────────────────────────────────────
   const curActiveData = useMemo(() => (current?.data ?? []).filter(r => r.total_days > 0 || r.total_advances > 0), [current]);
   const curGross   = useMemo(() => curActiveData.reduce((s, r) => s + r.gross_salary,   0), [curActiveData]);
   const curAdvance = useMemo(() => curActiveData.reduce((s, r) => s + r.total_advances, 0), [curActiveData]);
-  const curNet     = useMemo(() => curActiveData.reduce((s, r) => s + r.net_salary,     0), [curActiveData]);
+  // Net = sum of positive net_salary only (over-advance staff pay RM 0, not negative)
+  const curNet     = useMemo(() => curActiveData.reduce((s, r) => s + Math.max(0, r.net_salary), 0), [curActiveData]);
 
   // ── Distinct past months for filter dropdown ─────────────────────────────────
   const pastMonths = useMemo(() =>
@@ -715,14 +716,14 @@ export default function SalaryPage() {
               <div className="flex justify-between items-center p-3 rounded-lg" style={{ background: 'rgba(22,163,74,0.07)', border: '1px solid rgba(22,163,74,0.15)' }}>
                 <div>
                   <div className="text-xs text-gray-400 mb-0.5">Total Paid</div>
-                  <div className="text-xs text-green-600">Slip uploaded</div>
+                  <div className="text-xs text-green-600">Marked as paid</div>
                 </div>
                 <div className="font-bold text-green-700 text-lg">{formatRM(totalPaid)}</div>
               </div>
               <div className="flex justify-between items-center p-3 rounded-lg" style={{ background: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.15)' }}>
                 <div>
                   <div className="text-xs text-gray-400 mb-0.5">Total Unpaid</div>
-                  <div className="text-xs text-red-400">No slip yet</div>
+                  <div className="text-xs text-red-400">Not yet paid</div>
                 </div>
                 <div className="font-bold text-danger text-lg">{formatRM(totalUnpaid)}</div>
               </div>
