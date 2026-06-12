@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef, useState, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { formatRM, formatDate, getCurrentMonth, RANK_COLORS } from '@/lib/utils';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -66,6 +66,11 @@ export default function SalaryPage() {
   const [filterMonth, setFilterMonth] = useState('all');
   const [sortBy,      setSortBy]      = useState<SortBy>('none');
   const [applied,     setApplied]     = useState(false);
+
+  // Multi-select group pay
+  const [selectedPayIds, setSelectedPayIds] = useState<Set<string>>(new Set());
+  const [payViaId,       setPayViaId]       = useState<string>('');
+  const [copied,         setCopied]         = useState(false);
 
   // Slip upload
   const [uploading, setUploading] = useState<Record<string, boolean>>({});
@@ -535,6 +540,17 @@ export default function SalaryPage() {
               <table className="w-full text-sm" style={{ minWidth: 900 }}>
                 <thead>
                   <tr style={{ background: '#1e3a5f' }}>
+                    {isHistory && (
+                      <th className="px-3 py-2.5 text-center text-xs text-white font-semibold no-print w-8">
+                        <input type="checkbox"
+                          className="w-4 h-4 accent-yellow-500 cursor-pointer"
+                          checked={histRows.length > 0 && histRows.every(r => selectedPayIds.has(r.id))}
+                          onChange={e => {
+                            if (e.target.checked) setSelectedPayIds(new Set(histRows.map(r => r.id)));
+                            else { setSelectedPayIds(new Set()); setPayViaId(''); }
+                          }} />
+                      </th>
+                    )}
                     {isHistory && <th className="px-3 py-2.5 text-left text-xs text-white font-semibold">Month</th>}
                     <th className="px-3 py-2.5 text-left text-xs text-white font-semibold">Name</th>
                     <th className="px-3 py-2.5 text-right text-xs text-white font-semibold">Rate</th>
@@ -562,7 +578,19 @@ export default function SalaryPage() {
                     const editNet   = isEditing ? Math.round((editGross - editAdv) * 100) / 100 : Number(row.net_salary);
 
                     return (
-                      <tr key={key} style={{ background: isDone ? '#f0fdf4' : idx % 2 === 0 ? '#fff' : '#f8fafc', borderBottom: '1px solid #f1f5f9' }}>
+                      <tr key={key} style={{ background: selectedPayIds.has(key) ? '#fefce8' : isDone ? '#f0fdf4' : idx % 2 === 0 ? '#fff' : '#f8fafc', borderBottom: '1px solid #f1f5f9' }}>
+                        <td className="px-3 py-2.5 text-center no-print w-8">
+                          <input type="checkbox"
+                            className="w-4 h-4 accent-yellow-500 cursor-pointer"
+                            checked={selectedPayIds.has(key)}
+                            onChange={e => {
+                              setSelectedPayIds(prev => {
+                                const n = new Set(prev);
+                                e.target.checked ? n.add(key) : n.delete(key);
+                                return n;
+                              });
+                            }} />
+                        </td>
                         <td className="px-3 py-2.5 text-xs text-gray-500 font-mono">{row.month}</td>
                         <td className="px-3 py-2.5 font-medium text-gray-800">{row.employees?.full_name ?? '-'}</td>
                         <td className="px-3 py-2.5 text-right text-gray-600">{formatRM(Number(row.daily_rate))}</td>
@@ -726,6 +754,74 @@ export default function SalaryPage() {
             </div>
           </div>
         )}
+
+        {/* extra bottom padding when group pay bar is visible */}
+        {isHistory && selectedPayIds.size > 0 && <div className="h-28 no-print" />}
+
+        {/* ── Group Pay floating bar ────────────────────────────────────────────── */}
+        {isHistory && selectedPayIds.size > 0 && ((): React.ReactNode => {
+          const selRows  = histRows.filter(r => selectedPayIds.has(r.id));
+          const totalNet = selRows.reduce((s, r) => s + Math.max(0, Number(r.net_salary)), 0);
+          const withBank = selRows.filter(r => r.employees?.bank_account);
+          const payVia   = withBank.find(r => r.id === payViaId) || withBank[0];
+          return (
+            <div className="no-print fixed bottom-0 left-0 right-0 z-50 shadow-2xl border-t-2"
+              style={{ background: '#1C1007', borderColor: '#C9A84C' }}>
+              <div className="max-w-5xl mx-auto px-4 py-3 flex flex-wrap items-center gap-4">
+                {/* Count + total */}
+                <div>
+                  <div className="text-xs text-yellow-400 font-semibold">{selectedPayIds.size} staff selected</div>
+                  <div className="text-xl font-bold text-white">{formatRM(totalNet)}</div>
+                  <div className="text-xs text-gray-400">Total net to pay</div>
+                </div>
+                <div className="w-px h-10 shrink-0" style={{ background: 'rgba(255,255,255,0.2)' }} />
+                {/* Bank selector */}
+                {withBank.length > 0 ? (
+                  <div className="flex-1 min-w-[220px]">
+                    <div className="text-xs text-yellow-400 font-semibold mb-1">Pay via (bank account)</div>
+                    <select
+                      className="form-control text-sm py-1"
+                      style={{ background: '#2C1A0E', color: '#F5EDD6', border: '1px solid #C9A84C' }}
+                      value={payViaId || payVia?.id || ''}
+                      onChange={e => setPayViaId(e.target.value)}>
+                      {withBank.map(r => (
+                        <option key={r.id} value={r.id}>
+                          {r.employees?.full_name} — {r.employees?.bank_name}
+                        </option>
+                      ))}
+                    </select>
+                    {payVia && (
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-white font-mono text-sm font-bold tracking-wider">
+                          {payVia.employees?.bank_account}
+                        </span>
+                        <button type="button"
+                          className="text-xs px-2 py-0.5 rounded font-bold"
+                          style={{ background: copied ? '#16a34a' : '#C9A84C', color: '#1C1007' }}
+                          onClick={() => {
+                            navigator.clipboard.writeText(payVia!.employees?.bank_account || '');
+                            setCopied(true);
+                            setTimeout(() => setCopied(false), 2000);
+                          }}>
+                          {copied ? '✓ Copied' : '📋 Copy'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-xs text-gray-400">No bank account on file for selected staff</div>
+                )}
+                <div className="ml-auto flex gap-2">
+                  <button type="button"
+                    className="btn btn-secondary text-sm"
+                    onClick={() => { setSelectedPayIds(new Set()); setPayViaId(''); }}>
+                    ✕ Clear
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
       </div>
     );
   }
