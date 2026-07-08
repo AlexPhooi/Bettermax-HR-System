@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
   // Fetch attendance & advances in parallel
   const [attRes, advRes] = await Promise.all([
     supabase.from('hr_attendance')
-      .select('employee_id, days_worked, site_bonus')
+      .select('employee_id, days_worked, site_bonus, ot_hours')
       .gte('work_date', start).lte('work_date', end)
       .eq('status', 'approved').is('deleted_at', null),
     supabase.from('advances')
@@ -47,6 +47,7 @@ export async function POST(req: NextRequest) {
 
     const total_days       = att.reduce((s, a) => s + Number(a.days_worked  || 0), 0);
     const total_site_bonus = Math.round(att.reduce((s, a) => s + Number(a.site_bonus || 0), 0) * 100) / 100;
+    const total_ot_hours   = Math.round(att.reduce((s, a) => s + Number(a.ot_hours   || 0), 0) * 100) / 100;
     const base_salary      = Math.round(total_days * Number(rec.daily_rate) * 100) / 100;
     const gross_salary     = Math.round((base_salary + total_site_bonus) * 100) / 100;
     const total_advances   = Math.round(adv.reduce((s, a) => s + Number(a.amount || 0), 0) * 100) / 100;
@@ -57,6 +58,7 @@ export async function POST(req: NextRequest) {
       gross_salary,
       base_salary,
       total_site_bonus,
+      total_ot_hours,
       total_advances,
       net_salary,
     }).eq('id', rec.id);

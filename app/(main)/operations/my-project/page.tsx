@@ -99,7 +99,7 @@ export default function MyProjectPage() {
             <span style={{ fontSize: 12, fontWeight: 700, color: '#2C1A0E' }}>{progress}%</span>
           </div>
           <div style={{ height: 8, background: '#F5EDD6', borderRadius: 4, overflow: 'hidden' }}>
-            <div style={{ height: '100%', width: `${progress}%`, background: progress >= 80 ? '#27500A' : '#C9A84C', borderRadius: 4 }} />
+            <div style={{ height: '100%', width: `${progress}%`, background: progress >= 80 ? '#27500A' : '#C9962E', borderRadius: 4 }} />
           </div>
         </div>
 

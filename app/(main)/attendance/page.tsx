@@ -107,6 +107,27 @@ function getPhotoTime(url: string | null): string {
   return new Date(parseInt(m[1])).toLocaleTimeString('en-MY', { hour: '2-digit', minute: '2-digit', hour12: true });
 }
 
+/** Derive the small-thumbnail path uploaded alongside the full-size photo (see /api/upload). */
+function toThumbUrl(url: string): string {
+  return url.replace(/\.jpg$/i, '_thumb.jpg');
+}
+
+// Thumbnail <img> for list/grid views — loads the small derivative, falls back to
+// the full-size original on error (covers photos uploaded before thumbnails existed).
+function ThumbImg({ url, alt, className }: { url: string; alt: string; className?: string }) {
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={toThumbUrl(url)}
+      alt={alt}
+      loading="lazy"
+      decoding="async"
+      className={className}
+      onError={e => { const img = e.currentTarget; if (img.src !== url) img.src = url; }}
+    />
+  );
+}
+
 function PhotoCard({ url, label }: { url: string | null; label: string }) {
   if (!url) return null;
   const time = getPhotoTime(url);
@@ -114,8 +135,7 @@ function PhotoCard({ url, label }: { url: string | null; label: string }) {
     <div className="flex flex-col items-center gap-1.5 min-w-[80px]">
       <p className="text-xs text-gray-500 font-medium">{label}</p>
       <a href={url} target="_blank" rel="noopener noreferrer">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={url} alt={label} loading="lazy" decoding="async" className="w-20 h-20 object-cover rounded-lg border border-gray-200 hover:opacity-80 transition" />
+        <ThumbImg url={url} alt={label} className="w-20 h-20 object-cover rounded-lg border border-gray-200 hover:opacity-80 transition" />
       </a>
       {time && <p className="text-[10px] text-gray-400">{time}</p>}
     </div>
@@ -220,8 +240,7 @@ function PhotoBtn({ label, url, onUrl, type, photoLabel, onUploadChange }: {
       <p className="text-xs text-gray-500 font-medium">{label}</p>
       {url
         ? <a href={url} target="_blank" rel="noopener noreferrer">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={url} alt={label} loading="lazy" decoding="async" className="w-20 h-20 object-cover rounded-lg border-2 border-green-400 hover:opacity-80 transition" />
+            <ThumbImg url={url} alt={label} className="w-20 h-20 object-cover rounded-lg border-2 border-green-400 hover:opacity-80 transition" />
           </a>
         : <div className="w-20 h-20 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center text-gray-300 text-3xl">📷</div>
       }
@@ -420,8 +439,7 @@ function CompleteSessionCard({ draftRecs, empList, projList, showAlert, onDone }
         </div>
         {sessionCheckInPhoto && (
           <a href={sessionCheckInPhoto} target="_blank" rel="noopener noreferrer">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={sessionCheckInPhoto} alt="check-in" loading="lazy" decoding="async" className="w-14 h-14 object-cover rounded-lg border-2 border-green-400 hover:opacity-80" />
+            <ThumbImg url={sessionCheckInPhoto} alt="check-in" className="w-14 h-14 object-cover rounded-lg border-2 border-green-400 hover:opacity-80" />
           </a>
         )}
       </div>
@@ -766,15 +784,13 @@ function LeaderView() {
                     <div className="flex gap-3 mt-3">
                       {s.recs[0]?.check_in_photo_url && (
                         <a href={s.recs[0].check_in_photo_url} target="_blank" rel="noopener noreferrer" className="flex flex-col items-center gap-1">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={s.recs[0].check_in_photo_url} alt="Check-in" loading="lazy" decoding="async" className="w-14 h-14 object-cover rounded-lg border border-black/10" />
+                          <ThumbImg url={s.recs[0].check_in_photo_url} alt="Check-in" className="w-14 h-14 object-cover rounded-lg border border-black/10" />
                           <span className="text-xs text-gray-500">Check-in</span>
                         </a>
                       )}
                       {s.recs[0]?.check_out_photo_url && (
                         <a href={s.recs[0].check_out_photo_url} target="_blank" rel="noopener noreferrer" className="flex flex-col items-center gap-1">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={s.recs[0].check_out_photo_url} alt="Check-out" loading="lazy" decoding="async" className="w-14 h-14 object-cover rounded-lg border border-black/10" />
+                          <ThumbImg url={s.recs[0].check_out_photo_url} alt="Check-out" className="w-14 h-14 object-cover rounded-lg border border-black/10" />
                           <span className="text-xs text-gray-500">Check-out</span>
                         </a>
                       )}
@@ -981,6 +997,18 @@ function AdminView() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  // Re-fetch just the attendance records, no loading spinner — used after actions
+  // (like approve) where we've already applied an optimistic local update and just
+  // need to reconcile server-computed fields (e.g. site_bonus) in the background.
+  const refreshRecordsOnly = useCallback(async () => {
+    const params = new URLSearchParams();
+    if (filterMonth)   params.set('month',      filterMonth);
+    if (filterProject) params.set('project_id', filterProject);
+    if (filterStatus)  params.set('status',     filterStatus);
+    const recRes = await fetch(`/api/attendance?${params}`).then(r => r.json());
+    if (Array.isArray(recRes)) setRecords(recRes);
+  }, [filterMonth, filterProject, filterStatus]);
+
   // Advance lookup: employeeId_date → total amount
   const advanceMap = useMemo(() => {
     const m: Record<string, number> = {};
@@ -1183,7 +1211,11 @@ function AdminView() {
         ? `✅ ${ids.length} record${ids.length !== 1 ? 's' : ''} approved!`
         : `❌ ${ids.length} record${ids.length !== 1 ? 's' : ''} rejected.`,
         status === 'approved' ? 'success' : 'info');
-      loadData();
+      // Optimistic: reflect the new status immediately, no full-page reload/spinner.
+      const idSet = new Set(ids);
+      setRecords(prev => prev.map(r => idSet.has(r.id) ? { ...r, status } : r));
+      // Reconcile server-computed fields (site_bonus, etc.) in the background.
+      refreshRecordsOnly();
     } finally { setApproving(null); }
   }
 
@@ -1825,7 +1857,7 @@ function AdminView() {
                 })}
               </tbody>
               <tfoot>
-                <tr style={{ borderTop: '2px solid #C9A84C', background: '#FAF5E9' }}>
+                <tr style={{ borderTop: '2px solid #C9962E', background: '#FAF5E9' }}>
                   <td className="table-td font-bold text-sm" style={{ color: '#2C1A0E' }} colSpan={2}>
                     TOTAL ({groups.length} day{groups.length !== 1 ? 's' : ''})
                   </td>
@@ -1835,7 +1867,7 @@ function AdminView() {
                   <td className="table-td text-right font-bold text-sm" style={{ color: '#6B4A00' }}>
                     {groups.reduce((s, g) => s + g.totalGong, 0).toFixed(2)} 工
                   </td>
-                  <td className="table-td text-right font-bold text-sm" style={{ color: '#C9A84C' }}>
+                  <td className="table-td text-right font-bold text-sm" style={{ color: '#C9962E' }}>
                     {formatRM(groups.reduce((s, g) => s + g.totalSalary, 0))}
                   </td>
                   <td className="table-td text-right font-bold text-sm" style={{ color: '#16a34a' }}>

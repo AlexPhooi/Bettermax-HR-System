@@ -164,7 +164,7 @@ function NewDailyLogPageInner() {
                   onClick={() => setForm(f => ({ ...f, weather: w.value }))}
                   style={{
                     padding: '12px 8px', borderRadius: 8, fontSize: 14, fontWeight: form.weather === w.value ? 700 : 400,
-                    border: form.weather === w.value ? '2px solid #C9A84C' : '1px solid #C49A6C',
+                    border: form.weather === w.value ? '2px solid #C9962E' : '1px solid #C49A6C',
                     background: form.weather === w.value ? '#FAF5E9' : 'white',
                     color: form.weather === w.value ? '#2C1A0E' : '#6B4A00',
                     cursor: 'pointer', transition: 'all 0.1s',

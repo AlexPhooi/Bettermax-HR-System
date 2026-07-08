@@ -175,7 +175,7 @@ function OverviewTab({ project, isManager, onSaved }: { project: Project; isMana
                 <label className="form-label">Progress: {form.progress_percent||0}%</label>
                 <input type="range" min="0" max="100" value={form.progress_percent||0}
                   onChange={e=>setForm(f=>({...f,progress_percent:Number(e.target.value)}))}
-                  style={{ width:'100%', accentColor:'#C9A84C' }} />
+                  style={{ width:'100%', accentColor:'#C9962E' }} />
               </div>
               <div><label className="form-label">Contract Value (RM)</label><input type="number" className="form-control" value={form.contract_value||''} onChange={e=>setForm(f=>({...f,contract_value:Number(e.target.value)}))}/></div>
               <div><label className="form-label">Total Collected (RM)</label><input type="number" className="form-control" value={form.total_collected||''} onChange={e=>setForm(f=>({...f,total_collected:Number(e.target.value)}))}/></div>
@@ -385,7 +385,7 @@ function MilestonesTab({ projectId, milestones: initial, isManager, isOwner, rol
                             </button>
                           )}
                           {isOwner && bonus.status==='approved' && (
-                            <button onClick={()=>doBonus(bonus.id,'distribute')} disabled={saving===bonus.id} style={{fontSize:10,padding:'3px 10px',borderRadius:4,background:'#C9A84C',color:'#1E1400',border:'none',cursor:'pointer',fontWeight:600}}>
+                            <button onClick={()=>doBonus(bonus.id,'distribute')} disabled={saving===bonus.id} style={{fontSize:10,padding:'3px 10px',borderRadius:4,background:'#C9962E',color:'#2E1810',border:'none',cursor:'pointer',fontWeight:600}}>
                               Distribute
                             </button>
                           )}
@@ -578,7 +578,7 @@ function MaterialsTab({ projectId, milestones, isManager }: { projectId: string;
         <div>
           <h3 style={{ fontFamily:'Georgia,serif', fontSize:16, fontWeight:700, color:'#2C1A0E' }}>Material Schedule</h3>
           {urgentCount > 0 && (
-            <div style={{ background:'#faeeda', border:'1px solid #C9A84C', borderRadius:6, padding:'6px 12px', marginTop:6, fontSize:12, color:'#633806', fontWeight:600 }}>
+            <div style={{ background:'#faeeda', border:'1px solid #C9962E', borderRadius:6, padding:'6px 12px', marginTop:6, fontSize:12, color:'#633806', fontWeight:600 }}>
               ⚠ {urgentCount} material{urgentCount>1?'s':''} need ordering within 7 days!
             </div>
           )}
@@ -978,7 +978,7 @@ export default function ProjectDetailPage() {
           {TABS.map(t=>(
             <button key={t.key} onClick={()=>setTab(t.key)}
               style={tab===t.key
-                ?{borderBottom:'2px solid #C9A84C',color:'#2C1A0E',fontWeight:700,marginBottom:-2}
+                ?{borderBottom:'2px solid #C9962E',color:'#2C1A0E',fontWeight:700,marginBottom:-2}
                 :{color:'#C49A6C'}}
               className="px-4 py-2 text-sm transition-colors whitespace-nowrap">
               {t.label}

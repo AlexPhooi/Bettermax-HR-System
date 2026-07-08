@@ -22,13 +22,13 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        // ── Brand primary (dark brown) ───────────────────────────
+        // ── Brand primary (espresso brown, matched to the Better Max Builder logo) ──
         primary: {
-          DEFAULT: '#1E1400',   // brown-deep — navbar, dark bg
-          light:   '#3D2B00',   // brown-mid  — hover states
+          DEFAULT: '#2E1810',   // espresso brown — navbar, dark bg
+          light:   '#4A2E1F',   // brown-mid  — hover states
         },
-        // ── Brand accent (gold) ──────────────────────────────────
-        accent:  '#C9A84C',     // gold — buttons, highlights
+        // ── Brand accent (gold, matched to the logo) ──────────────
+        accent:  '#C9962E',     // gold — buttons, highlights
         // ── Status ──────────────────────────────────────────────
         danger:  '#A32D2D',
         warn:    '#B8860B',
@@ -38,13 +38,13 @@ module.exports = {
 
         // ── Full brand palette (use as needed) ───────────────────
         gold: {
-          DEFAULT: '#C9A84C',
+          DEFAULT: '#C9962E',
           light:   '#E8D5A3',
           muted:   '#C49A6C',
           pale:    '#FAF5E9',
         },
         brown: {
-          deep:  '#1A0E06',
+          deep:  '#2E1810',
           mid:   '#3D2B1F',
           light: '#6B4226',
         },

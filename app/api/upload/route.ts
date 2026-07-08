@@ -53,12 +53,19 @@ export async function POST(req: NextRequest) {
   // Compress images to JPEG (max 1400px, quality 82) — PDFs are passed through unchanged
   const isImage = file.type.startsWith('image/');
   let buffer: Buffer;
+  let thumbBuffer: Buffer | null = null;
   let uploadContentType: string;
   if (isImage) {
-    buffer = await sharp(rawBuffer)
-      .rotate()                              // auto-orient from EXIF
+    const oriented = sharp(rawBuffer).rotate(); // auto-orient from EXIF
+    const orientedBuffer = await oriented.toBuffer();
+    buffer = await sharp(orientedBuffer)
       .resize({ width: 1400, height: 1400, fit: 'inside', withoutEnlargement: true })
       .jpeg({ quality: 82, mozjpeg: true })
+      .toBuffer();
+    // Small thumbnail for list/grid views — full-size only loads on click-through
+    thumbBuffer = await sharp(orientedBuffer)
+      .resize({ width: 200, height: 200, fit: 'inside', withoutEnlargement: true })
+      .jpeg({ quality: 70, mozjpeg: true })
       .toBuffer();
     uploadContentType = 'image/jpeg';
     // Update path extension to .jpg for compressed images
@@ -68,13 +75,27 @@ export async function POST(req: NextRequest) {
     uploadContentType = file.type;
   }
 
-  const { error: upErr } = await supabase.storage
-    .from('hr-documents')
-    .upload(path, buffer, { contentType: uploadContentType, upsert: true });
+  const thumbPath = thumbBuffer ? path.replace(/\.jpg$/, '_thumb.jpg') : null;
+
+  const uploads = [
+    supabase.storage.from('hr-documents')
+      .upload(path, buffer, { contentType: uploadContentType, upsert: true, cacheControl: '31536000' }),
+  ];
+  if (thumbBuffer && thumbPath) {
+    uploads.push(
+      supabase.storage.from('hr-documents')
+        .upload(thumbPath, thumbBuffer, { contentType: 'image/jpeg', upsert: true, cacheControl: '31536000' })
+    );
+  }
+  const [{ error: upErr }, thumbResult] = await Promise.all(uploads);
 
   if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 });
+  if (thumbResult?.error) return NextResponse.json({ error: thumbResult.error.message }, { status: 500 });
 
   const { data: { publicUrl } } = supabase.storage.from('hr-documents').getPublicUrl(path);
+  const thumbUrl = thumbPath
+    ? supabase.storage.from('hr-documents').getPublicUrl(thumbPath).data.publicUrl
+    : null;
 
   // Auto-update DB for types that link to a specific record
   if (docType === 'passport' && employee_id) {
@@ -87,5 +108,5 @@ export async function POST(req: NextRequest) {
     await supabase.from('hr_attendance').update({ photo_url: publicUrl }).eq('id', record_id);
   }
 
-  return NextResponse.json({ url: publicUrl });
+  return NextResponse.json({ url: publicUrl, thumb_url: thumbUrl });
 }

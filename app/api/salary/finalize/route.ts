@@ -32,6 +32,7 @@ export async function POST(req: NextRequest) {
       daily_rate:       r.daily_rate,
       base_salary:      r.base_salary,
       total_site_bonus: r.total_site_bonus,
+      total_ot_hours:   r.total_ot_hours || 0,
       gross_salary:     r.gross_salary,
       total_advances:   r.total_advances,
       net_salary:       r.net_salary,

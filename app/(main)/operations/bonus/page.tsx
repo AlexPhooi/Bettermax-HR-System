@@ -134,8 +134,8 @@ export default function BonusPage() {
 
       {/* Bonus pools */}
       <div className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: 24 }}>
-        <div style={{ background: '#1E1400', padding: '10px 20px' }}>
-          <h2 style={{ color: '#C9A84C', fontFamily: 'Georgia, serif', fontSize: 15, fontWeight: 700, margin: 0 }}>Bonus Pools by Milestone</h2>
+        <div style={{ background: '#2E1810', padding: '10px 20px' }}>
+          <h2 style={{ color: '#C9962E', fontFamily: 'Georgia, serif', fontSize: 15, fontWeight: 700, margin: 0 }}>Bonus Pools by Milestone</h2>
         </div>
 
         {pools.length === 0 ? (
@@ -223,8 +223,8 @@ export default function BonusPage() {
       {/* Worker bonus summary */}
       {summary.length > 0 && (
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-          <div style={{ background: '#1E1400', padding: '10px 20px' }}>
-            <h2 style={{ color: '#C9A84C', fontFamily: 'Georgia, serif', fontSize: 15, fontWeight: 700, margin: 0 }}>Worker Bonus Summary</h2>
+          <div style={{ background: '#2E1810', padding: '10px 20px' }}>
+            <h2 style={{ color: '#C9962E', fontFamily: 'Georgia, serif', fontSize: 15, fontWeight: 700, margin: 0 }}>Worker Bonus Summary</h2>
           </div>
           <div className="overflow-x-auto">
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>

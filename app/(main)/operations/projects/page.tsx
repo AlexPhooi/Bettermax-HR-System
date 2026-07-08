@@ -101,7 +101,7 @@ export default function ProjectsListPage() {
           <button key={f} onClick={() => setFilter(f)}
             className="btn btn-sm"
             style={filter === f
-              ? { background: '#C9A84C', color: '#1E1400', fontWeight: 700 }
+              ? { background: '#C9962E', color: '#2E1810', fontWeight: 700 }
               : { background: '#F5EDD6', color: '#6B4A00' }}>
             {f === 'all' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1)}
           </button>
@@ -159,7 +159,7 @@ export default function ProjectsListPage() {
                       <td className="table-td">
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                           <div style={{ flex: 1, height: 6, background: '#F5EDD6', borderRadius: 3, overflow: 'hidden', minWidth: 60 }}>
-                            <div style={{ height: '100%', width: `${p.progress_percent || 0}%`, background: '#C9A84C', borderRadius: 3 }} />
+                            <div style={{ height: '100%', width: `${p.progress_percent || 0}%`, background: '#C9962E', borderRadius: 3 }} />
                           </div>
                           <span style={{ fontSize: 11, color: '#6B4A00', whiteSpace: 'nowrap' }}>{p.progress_percent || 0}%</span>
                         </div>

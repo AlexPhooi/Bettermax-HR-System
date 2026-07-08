@@ -43,8 +43,8 @@ export default function LoginPage() {
           <Image
             src="/logo-letterhead.png"
             alt="Better Max Builder Portal"
-            width={3780}
-            height={1890}
+            width={889}
+            height={274}
             priority
             style={{ width: '100%', height: 'auto' }}
           />
@@ -55,7 +55,7 @@ export default function LoginPage() {
           background: '#FFFFFF',
           borderRadius: 12,
           border: '1px solid #E8D5A3',
-          borderTop: '3px solid #C9A84C',
+          borderTop: '3px solid #C9962E',
           padding: '36px 32px',
           boxShadow: '0 4px 24px rgba(26,14,6,0.08)',
         }}>
@@ -105,7 +105,7 @@ export default function LoginPage() {
 
         {/* ── Footer ──────────────────────────────────────────────── */}
         <p style={{ textAlign: 'center', marginTop: 20, fontSize: 11, color: '#C49A6C', fontFamily: 'Arial, sans-serif' }}>
-          © {new Date().getFullYear()} Better Max Enterprise
+          © {new Date().getFullYear()} Better Max Builder
         </p>
       </div>
     </div>

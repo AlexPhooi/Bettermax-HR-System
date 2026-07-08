@@ -39,62 +39,87 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ updated: ids.length });
   }
 
-  // Update each record with correct site_bonus
-  let savingsCredited  = 0;
-  let birthdayBonuses  = 0;
   const month = new Date().toISOString().slice(0, 7);
 
+  // ── Compute per-record bonus in memory (no DB round-trips) ─────────────
+  const recBonus = new Map<string, { bonus: number; isBirthdayMonth: boolean }>();
   for (const rec of records) {
     const effectiveHours = Number(rec.hours_worked);
-
-    // Check if work_date is in employee's birthday month → x2 bonus
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const emp: any = rec.employees;
     const dob: string | null = emp?.date_of_birth ?? null;
     const workMonth = rec.work_date ? rec.work_date.slice(5, 7) : null;
     const dobMonth  = dob ? dob.slice(5, 7) : null;
-    const isBirthdayMonth = dobMonth && workMonth && dobMonth === workMonth;
+    const isBirthdayMonth = Boolean(dobMonth && workMonth && dobMonth === workMonth);
 
     let bonus = 0;
     if (site_clean !== undefined && Boolean(site_clean) && effectiveHours >= 8) {
       bonus = isBirthdayMonth ? 20 : 10; // x2 on birthday month
     }
+    recBonus.set(rec.id, { bonus, isBirthdayMonth });
+  }
 
-    const recUpdate = site_clean !== undefined
-      ? { ...update, site_bonus: bonus }
-      : update;
+  // ── Batch the status/site_clean/site_bonus update — one query per distinct bonus value ──
+  if (site_clean !== undefined) {
+    const idsByBonus = new Map<number, string[]>();
+    for (const rec of records) {
+      const bonus = recBonus.get(rec.id)!.bonus;
+      if (!idsByBonus.has(bonus)) idsByBonus.set(bonus, []);
+      idsByBonus.get(bonus)!.push(rec.id);
+    }
+    await Promise.all(
+      Array.from(idsByBonus.entries()).map(([bonus, ids]) =>
+        supabase.from('hr_attendance').update({ ...update, site_bonus: bonus }).in('id', ids)
+      )
+    );
+  } else {
+    await supabase.from('hr_attendance').update(update).in('id', ids);
+  }
 
-    await supabase.from('hr_attendance').update(recUpdate).eq('id', rec.id);
+  // ── Auto-credit savings on approval — batched, not per-record ──────────
+  let savingsCredited  = 0;
+  let birthdayBonuses  = 0;
 
-    // ── Auto-credit savings on approval ──────────────────────────────
-    if (status === 'approved' && bonus > 0) {
-      // Get current savings balance for this employee
-      const { data: savRows } = await supabase
-        .from('savings')
-        .select('type, amount')
-        .eq('employee_id', rec.employee_id);
+  if (status === 'approved') {
+    const bonusRecs = records.filter(rec => (recBonus.get(rec.id)?.bonus || 0) > 0);
 
-      const currentBal = (savRows || []).reduce((s, r) =>
-        r.type === 'credit' ? s + Number(r.amount) : s - Number(r.amount), 0);
-      const balanceAfter = Math.round((currentBal + bonus) * 100) / 100;
+    if (bonusRecs.length > 0) {
+      const employeeIds = Array.from(new Set(bonusRecs.map(r => r.employee_id)));
 
-      // Check if this attendance record already credited (idempotent)
-      const { count: existing } = await supabase
-        .from('savings')
-        .select('id', { count: 'exact', head: true })
-        .eq('reference_id', rec.id)
-        .eq('type_detail', 'mission_bonus');
+      const [{ data: savRows }, { data: alreadyCredited }] = await Promise.all([
+        supabase.from('savings').select('employee_id, type, amount').in('employee_id', employeeIds),
+        supabase.from('savings').select('reference_id')
+          .in('reference_id', bonusRecs.map(r => r.id)).eq('type_detail', 'mission_bonus'),
+      ]);
 
-      if ((existing || 0) === 0) {
+      const creditedIds = new Set((alreadyCredited || []).map(r => r.reference_id));
+      const balances = new Map<string, number>();
+      for (const empId of employeeIds) {
+        const bal = (savRows || [])
+          .filter(r => r.employee_id === empId)
+          .reduce((s, r) => r.type === 'credit' ? s + Number(r.amount) : s - Number(r.amount), 0);
+        balances.set(empId, bal);
+      }
+
+      const newSavings: {
+        employee_id: string; type: string; type_detail: string; amount: number;
+        balance_after: number; reason: string; reference_id: string; month: string; created_by: string;
+      }[] = [];
+
+      for (const rec of bonusRecs) {
+        if (creditedIds.has(rec.id)) continue; // idempotent — already credited
+        const { bonus, isBirthdayMonth } = recBonus.get(rec.id)!;
+        const balanceAfter = Math.round(((balances.get(rec.employee_id) || 0) + bonus) * 100) / 100;
+        balances.set(rec.employee_id, balanceAfter);
+
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const proj: any = rec.projects;
         const projectName  = proj?.name || proj?.code || 'Site';
-        const dateStr      = rec.work_date;
         const bonusLabel   = isBirthdayMonth
-          ? `🎂 Birthday bonus — ${projectName} (${dateStr})`
-          : `Site bonus — ${projectName} (${dateStr})`;
+          ? `🎂 Birthday bonus — ${projectName} (${rec.work_date})`
+          : `Site bonus — ${projectName} (${rec.work_date})`;
 
-        await supabase.from('savings').insert({
+        newSavings.push({
           employee_id:   rec.employee_id,
           type:          'credit',
           type_detail:   'mission_bonus',
@@ -105,14 +130,18 @@ export async function PATCH(req: NextRequest) {
           month,
           created_by:    user.id,
         });
-
-        // Keep employees.site_bonus_balance in sync
-        await supabase.from('employees')
-          .update({ site_bonus_balance: balanceAfter })
-          .eq('id', rec.employee_id);
-
         savingsCredited++;
         if (isBirthdayMonth) birthdayBonuses++;
+      }
+
+      if (newSavings.length > 0) {
+        await Promise.all([
+          supabase.from('savings').insert(newSavings),
+          // Keep employees.site_bonus_balance in sync — one update per employee, in parallel
+          ...Array.from(balances.entries()).map(([empId, bal]) =>
+            supabase.from('employees').update({ site_bonus_balance: bal }).eq('id', empId)
+          ),
+        ]);
       }
     }
   }

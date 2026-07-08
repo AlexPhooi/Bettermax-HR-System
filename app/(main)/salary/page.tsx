@@ -13,6 +13,7 @@ interface HistoryRecord {
   daily_rate: number;
   base_salary: number;
   total_site_bonus: number;
+  total_ot_hours: number;
   gross_salary: number;
   total_advances: number;
   net_salary: number;
@@ -375,10 +376,10 @@ export default function SalaryPage() {
         <style>{printStyles}</style>
 
         {/* Print letterhead */}
-        <div className="print-show pb-4 mb-4" style={{ borderBottom: '2px solid #1e3a5f' }}>
+        <div className="print-show pb-4 mb-4" style={{ borderBottom: '2px solid #2E1810' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
             <div>
-              <div style={{ fontSize: 18, fontWeight: 800, color: '#1e3a5f' }}>🏢 Bettermax Enterprise HR</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: '#2E1810' }}>🏢 Better Max Builder HR</div>
               <div style={{ fontSize: 12, color: '#6b7280' }}>Salary Report — {label}</div>
             </div>
             <div style={{ textAlign: 'right', fontSize: 12, color: '#6b7280' }}>
@@ -397,7 +398,7 @@ export default function SalaryPage() {
             {(isHistory ? applied && filterMonth !== 'all' : true) && (
               <button
                 className="btn text-sm btn-outline"
-                style={{ borderColor: '#C9A84C', color: '#6B4A00' }}
+                style={{ borderColor: '#C9962E', color: '#6B4A00' }}
                 onClick={() => {
                   const month = isHistory ? filterMonth : current?.month;
                   if (month) recalculate(month);
@@ -601,7 +602,11 @@ export default function SalaryPage() {
                                 onChange={e => setEditValues(v => ({ ...v, total_days: e.target.value }))} />
                             : editDays.toFixed(2)}
                         </td>
-                        <td className="px-3 py-2.5 text-right text-gray-400">-</td>
+                        <td className="px-3 py-2.5 text-right text-gray-600">
+                          {Number(row.total_ot_hours) > 0
+                            ? `+${Number(row.total_ot_hours).toFixed(1)}h`
+                            : <span className="text-gray-300">-</span>}
+                        </td>
                         <td className="px-3 py-2.5 text-right text-accent font-semibold">{formatRM(editGross)}</td>
                         <td className="px-3 py-2.5 text-right">
                           {isEditing
@@ -766,7 +771,7 @@ export default function SalaryPage() {
           const payVia   = withBank.find(r => r.id === payViaId) || withBank[0];
           return (
             <div className="no-print fixed bottom-0 left-0 right-0 z-50 shadow-2xl border-t-2"
-              style={{ background: '#1C1007', borderColor: '#C9A84C' }}>
+              style={{ background: '#1C1007', borderColor: '#C9962E' }}>
               <div className="max-w-5xl mx-auto px-4 py-3 flex flex-wrap items-center gap-4">
                 {/* Count + total */}
                 <div>
@@ -781,7 +786,7 @@ export default function SalaryPage() {
                     <div className="text-xs text-yellow-400 font-semibold mb-1">Pay via (bank account)</div>
                     <select
                       className="form-control text-sm py-1"
-                      style={{ background: '#2C1A0E', color: '#F5EDD6', border: '1px solid #C9A84C' }}
+                      style={{ background: '#2C1A0E', color: '#F5EDD6', border: '1px solid #C9962E' }}
                       value={payViaId || payVia?.id || ''}
                       onChange={e => setPayViaId(e.target.value)}>
                       {withBank.map(r => (
@@ -797,7 +802,7 @@ export default function SalaryPage() {
                         </span>
                         <button type="button"
                           className="text-xs px-2 py-0.5 rounded font-bold"
-                          style={{ background: copied ? '#16a34a' : '#C9A84C', color: '#1C1007' }}
+                          style={{ background: copied ? '#16a34a' : '#C9962E', color: '#1C1007' }}
                           onClick={() => {
                             navigator.clipboard.writeText(payVia!.employees?.bank_account || '');
                             setCopied(true);

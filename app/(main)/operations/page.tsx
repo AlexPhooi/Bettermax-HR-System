@@ -105,7 +105,7 @@ export default function OperationsDashboard() {
   // Capacity banner
   const capacityBanner = {
     available: { bg: '#eaf3de', border: '#27500A', text: '#27500A', icon: '✅', msg: `${data.available_workers} free workers available — can take a new project` },
-    limited:   { bg: '#faeeda', border: '#C9A84C', text: '#633806', icon: '⚠️', msg: `${data.available_workers} free workers — limited capacity` },
+    limited:   { bg: '#faeeda', border: '#C9962E', text: '#633806', icon: '⚠️', msg: `${data.available_workers} free workers — limited capacity` },
     full:      { bg: '#fcebeb', border: '#A32D2D', text: '#791f1f', icon: '🔴', msg: 'All workers allocated — cannot take new project' },
   }[data.capacity_status];
 
@@ -204,7 +204,7 @@ export default function OperationsDashboard() {
                     <span style={{ fontSize: 11, fontWeight: 700, color: '#2C1A0E' }}>{progress}%</span>
                   </div>
                   <div style={{ height: 6, background: '#F5EDD6', borderRadius: 3, overflow: 'hidden' }}>
-                    <div style={{ height: '100%', borderRadius: 3, width: `${progress}%`, background: progress >= 80 ? '#27500A' : progress >= 50 ? '#C9A84C' : '#C49A6C' }} />
+                    <div style={{ height: '100%', borderRadius: 3, width: `${progress}%`, background: progress >= 80 ? '#27500A' : progress >= 50 ? '#C9962E' : '#C49A6C' }} />
                   </div>
                 </div>
 
