@@ -52,6 +52,10 @@ export default function SalaryPage() {
   // Data
   const [history,     setHistory]     = useState<HistoryRecord[]>([]);
   const [current,     setCurrent]     = useState<CalcResult | null>(null);
+  // Fixed snapshot of today's real current month, for the Overview page's
+  // "Current Month" card — stays put even when the detail view's `current`
+  // navigates to a different (unfinalized) month via the month picker.
+  const [homeCurrent, setHomeCurrent] = useState<CalcResult | null>(null);
   const [curRecordMap, setCurRecordMap] = useState<Record<string, SlipRec>>({});
   const [loading,     setLoading]     = useState(true);
   const [curFinalized, setCurFinalized] = useState(false);
@@ -62,6 +66,11 @@ export default function SalaryPage() {
   const [view,        setView]        = useState<'overview' | 'detail'>('overview');
   const [section,     setSection]     = useState<Section>('history');
   const [overviewTab, setOverviewTab] = useState<'cards' | 'staff'>('cards');
+  // Which month the "current/unfinalized" section is showing — defaults to today's
+  // real month, but can be changed so a month that was never finalized (e.g. the
+  // calendar rolled over before anyone hit Finalize) is still reachable.
+  const [viewMonth,   setViewMonth]   = useState(curMonth);
+  const [loadingCur,  setLoadingCur]  = useState(false);
 
   // Filter
   const [filterMonth, setFilterMonth] = useState('all');
@@ -96,24 +105,40 @@ export default function SalaryPage() {
     setTimeout(() => setAlertMsg(''), 5000);
   }
 
+  // ── Load the "current/unfinalized" section for an arbitrary month ───────────
+  // Reused on mount (today's real month) and whenever the user picks a
+  // different month in the detail view — e.g. a past month that was never
+  // finalized before the calendar rolled over, so it never got a salary_records row.
+  async function loadCurrentSection(month: string) {
+    setLoadingCur(true);
+    setCurFinalized(false);
+    setCurRecordMap({});
+    try {
+      const [calcRes, recRes] = await Promise.all([
+        fetch(`/api/salary/calculate?month=${month}`).then(r => r.json()),
+        fetch(`/api/salary/records?month=${month}`).then(r => r.json()),
+      ]);
+      if (calcRes?.data) {
+        setCurrent(calcRes);
+        if (month === curMonth) setHomeCurrent(calcRes);
+      }
+      if (Array.isArray(recRes) && recRes.length > 0) {
+        setCurFinalized(true);
+        const map: Record<string, SlipRec> = {};
+        for (const r of recRes) map[r.employee_id] = { id: r.id, payment_slip_url: r.payment_slip_url };
+        setCurRecordMap(map);
+      }
+    } finally { setLoadingCur(false); }
+  }
+
   // ── Load on mount ────────────────────────────────────────────────────────────
   useEffect(() => {
     async function load() {
       setLoading(true);
       try {
-        const [histRes, calcRes, recRes] = await Promise.all([
-          fetch('/api/salary/records').then(r => r.json()),
-          fetch(`/api/salary/calculate?month=${curMonth}`).then(r => r.json()),
-          fetch(`/api/salary/records?month=${curMonth}`).then(r => r.json()),
-        ]);
+        const histRes = await fetch('/api/salary/records').then(r => r.json());
         if (Array.isArray(histRes)) setHistory(histRes);
-        if (calcRes?.data) setCurrent(calcRes);
-        if (Array.isArray(recRes) && recRes.length > 0) {
-          setCurFinalized(true);
-          const map: Record<string, SlipRec> = {};
-          for (const r of recRes) map[r.employee_id] = { id: r.id, payment_slip_url: r.payment_slip_url };
-          setCurRecordMap(map);
-        }
+        await loadCurrentSection(curMonth);
       } finally { setLoading(false); }
     }
     load();
@@ -271,17 +296,12 @@ export default function SalaryPage() {
     pastHistory.filter(r => r.status !== 'paid').reduce((s, r) => s + Number(r.net_salary), 0),
     [pastHistory]);
 
-  // ── Derived: current month totals ───────────────────────────────────────────
-  const curActiveData = useMemo(() => (current?.data ?? []).filter(r => r.total_days > 0 || r.total_advances > 0), [current]);
+  // ── Derived: current month totals (Overview card — always today's real month) ──
+  const curActiveData = useMemo(() => (homeCurrent?.data ?? []).filter(r => r.total_days > 0 || r.total_advances > 0), [homeCurrent]);
   const curGross   = useMemo(() => curActiveData.reduce((s, r) => s + r.gross_salary,   0), [curActiveData]);
   const curAdvance = useMemo(() => curActiveData.reduce((s, r) => s + r.total_advances, 0), [curActiveData]);
   // Net = sum of positive net_salary only (over-advance staff pay RM 0, not negative)
   const curNet     = useMemo(() => curActiveData.reduce((s, r) => s + Math.max(0, r.net_salary), 0), [curActiveData]);
-
-  // ── Distinct past months for filter dropdown ─────────────────────────────────
-  const pastMonths = useMemo(() =>
-    Array.from(new Set(pastHistory.map(r => r.month))).sort((a, b) => b.localeCompare(a)),
-    [pastHistory]);
 
   // ── Last month data (for Staff Overview tab) ─────────────────────────────────
   const lastMonth = useMemo(() => {
@@ -289,6 +309,13 @@ export default function SalaryPage() {
     const d = new Date(y, m - 2, 1);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   }, [curMonth]);
+
+  // ── Distinct past months for filter dropdown ─────────────────────────────────
+  // Always include last month even if it has no salary_records yet (not finalized) —
+  // picking it still works, see the History Month select's onChange below.
+  const pastMonths = useMemo(() =>
+    Array.from(new Set([...pastHistory.map(r => r.month), lastMonth])).sort((a, b) => b.localeCompare(a)),
+    [pastHistory, lastMonth]);
 
   const lastMonthMap = useMemo(() => {
     const map: Record<string, HistoryRecord> = {};
@@ -341,7 +368,32 @@ export default function SalaryPage() {
     setSortBy('none');
     setApplied(false);
     setView('detail');
+    // Always start the "current/unfinalized" view at today's real month —
+    // any earlier excursion to a different month (via the month picker) resets.
+    if (s === 'current' && viewMonth !== curMonth) {
+      setViewMonth(curMonth);
+      loadCurrentSection(curMonth);
+    }
   }
+
+  // Jump straight into a month's detail view — used by the "not finalized yet"
+  // reminder banner, and by the History month filter when the picked month has
+  // no salary_records yet (not finalized), so the user never hits a dead end.
+  function reviewMonth(month: string) {
+    setSection('current');
+    setFilterMonth('all');
+    setSortBy('none');
+    setApplied(false);
+    setView('detail');
+    setViewMonth(month);
+    loadCurrentSection(month);
+  }
+  function reviewLastMonth() { reviewMonth(lastMonth); }
+
+  // Day-of-month payroll deadline: previous month's salary should be checked
+  // and issued by the 7th. True once that window has passed.
+  const pastPayrollDeadline = new Date().getDate() > 7;
+  const lastMonthFinalized  = Object.keys(lastMonthMap).length > 0;
 
   // ─── Print styles ─────────────────────────────────────────────────────────────
   const printStyles = `
@@ -369,7 +421,7 @@ export default function SalaryPage() {
     const isHistory = section === 'history';
     const histRows  = detailRows as HistoryRecord[];
     const calcRows  = detailRows as CalcRow[];
-    const label     = isHistory ? 'History' : `Current Month (${curMonth})`;
+    const label     = isHistory ? 'History' : `Month (${current?.month ?? viewMonth})`;
 
     return (
       <div className="p-4 md:p-6 max-w-full mx-auto">
@@ -427,10 +479,34 @@ export default function SalaryPage() {
             {isHistory && (
               <div>
                 <label className="form-label">Month</label>
-                <select className="form-control" value={filterMonth} onChange={e => setFilterMonth(e.target.value)}>
+                <select className="form-control" value={filterMonth} onChange={e => {
+                  const month = e.target.value;
+                  // Not finalized yet (no salary_records for it) — pivot straight
+                  // into the reviewable/finalizable view instead of showing "no records".
+                  if (month !== 'all' && !pastHistory.some(r => r.month === month)) {
+                    reviewMonth(month);
+                    return;
+                  }
+                  setFilterMonth(month);
+                }}>
                   <option value="all">All</option>
                   {pastMonths.map(m => <option key={m} value={m}>{m}</option>)}
                 </select>
+              </div>
+            )}
+            {!isHistory && (
+              <div>
+                <label className="form-label">Month</label>
+                <div className="flex gap-2">
+                  <input type="month" className="form-control" max={curMonth}
+                    value={viewMonth} onChange={e => setViewMonth(e.target.value)} />
+                  <button className="btn btn-primary" onClick={() => loadCurrentSection(viewMonth)} disabled={loadingCur}>
+                    {loadingCur ? '⏳' : 'Go'}
+                  </button>
+                </div>
+                <p className="text-xs text-gray-400 mt-1">
+                  Use this to reach a month that was never finalized before the calendar moved on.
+                </p>
               </div>
             )}
             <div>
@@ -453,7 +529,7 @@ export default function SalaryPage() {
         {/* Summary letterhead */}
         <div className="card p-4 mb-4" style={{ background: 'rgba(30,58,95,0.04)', border: '1px solid rgba(30,58,95,0.12)' }}>
           <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
-            {isHistory ? (filterMonth === 'all' ? 'All History Summary' : `Summary — ${filterMonth}`) : `${curMonth} Summary`}
+            {isHistory ? (filterMonth === 'all' ? 'All History Summary' : `Summary — ${filterMonth}`) : `${current?.month ?? viewMonth} Summary`}
           </div>
           <div className="grid grid-cols-3 gap-4 text-center">
             <div>
@@ -838,6 +914,31 @@ export default function SalaryPage() {
       <h1 className="text-2xl font-bold text-primary mb-5">Salary</h1>
 
       {alertMsg && <div className={`alert alert-${alertType} mb-4`}>{alertMsg}</div>}
+
+      {/* ── Reminder: last month must be checked before payroll goes out on the 7th ── */}
+      {!lastMonthFinalized && (
+        <div className="rounded-xl p-4 mb-5 flex items-center justify-between gap-4 flex-wrap"
+          style={{
+            background: pastPayrollDeadline ? 'rgba(163,45,45,0.08)' : 'rgba(201,150,46,0.1)',
+            border: `1px solid ${pastPayrollDeadline ? 'rgba(163,45,45,0.3)' : 'rgba(201,150,46,0.35)'}`,
+          }}>
+          <div>
+            <div className="font-semibold text-sm" style={{ color: pastPayrollDeadline ? '#A32D2D' : '#6B4A00' }}>
+              {pastPayrollDeadline ? '⚠️ Overdue: ' : '⏰ '}
+              {lastMonth} salary hasn&apos;t been finalized yet
+            </div>
+            <div className="text-xs text-gray-500 mt-0.5">
+              {pastPayrollDeadline
+                ? `Past the 7th — this should have been checked and issued already.`
+                : `Check and finalize before the 7th so payroll can go out on time.`}
+            </div>
+          </div>
+          <button className="btn btn-sm" style={{ background: pastPayrollDeadline ? '#A32D2D' : '#C9962E', color: '#fff' }}
+            onClick={reviewLastMonth}>
+            Review {lastMonth} →
+          </button>
+        </div>
+      )}
 
       {/* ── Tab bar ── */}
       <div className="flex gap-1 mb-5 border-b border-gray-200">
