@@ -35,6 +35,8 @@ export async function POST(req: NextRequest) {
       total_ot_hours:   r.total_ot_hours || 0,
       gross_salary:     r.gross_salary,
       total_advances:   r.total_advances,
+      carried_advance:  r.carried_advance    || 0,
+      carry_forward_out: r.carry_forward_out || 0,
       net_salary:       r.net_salary,
       status:           'finalized',
     }))

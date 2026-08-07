@@ -18,6 +18,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (body.total_advances  !== undefined) updates.total_advances  = Number(body.total_advances);
   if (body.gross_salary    !== undefined) updates.gross_salary    = Number(body.gross_salary);
   if (body.net_salary      !== undefined) updates.net_salary      = Number(body.net_salary);
+  if (body.carry_forward_out !== undefined) updates.carry_forward_out = Number(body.carry_forward_out);
 
   if (!Object.keys(updates).length) return NextResponse.json({ error: 'Nothing to update.' }, { status: 400 });
 
