@@ -16,6 +16,8 @@ interface HistoryRecord {
   total_ot_hours: number;
   gross_salary: number;
   total_advances: number;
+  carried_advance: number;
+  carry_forward_out: number;
   net_salary: number;
   payment_slip_url: string | null;
   employees: { full_name: string; bank_name: string | null; bank_account: string | null } | null;
@@ -32,6 +34,8 @@ interface CalcRow {
   total_site_bonus: number;
   gross_salary: number;
   total_advances: number;
+  carried_advance: number;
+  carry_forward_out: number;
   net_salary: number;
   attendance_days: number;
   bank_name: string | null;
@@ -256,15 +260,18 @@ export default function SalaryPage() {
     const days     = parseFloat(editValues.total_days)     || 0;
     const advances = parseFloat(editValues.total_advances) || 0;
     const rate     = Number(row.daily_rate);
+    const carried  = Number(row.carried_advance) || 0;
     const gross    = Math.round(rate * days * 100) / 100;
-    const net      = Math.round((gross - advances) * 100) / 100;
+    const effectiveAdv = Math.round((advances + carried) * 100) / 100;
+    const net           = Math.max(0, Math.round((gross - effectiveAdv) * 100) / 100);
+    const carryOut       = Math.max(0, Math.round((effectiveAdv - gross) * 100) / 100);
     const res = await fetch(`/api/salary/records/${row.id}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ total_days: days, total_advances: advances, gross_salary: gross, net_salary: net }),
+      body: JSON.stringify({ total_days: days, total_advances: advances, gross_salary: gross, net_salary: net, carry_forward_out: carryOut }),
     });
     if (res.ok) {
       setHistory(h => h.map(r => r.id === row.id
-        ? { ...r, total_days: days, total_advances: advances, gross_salary: gross, net_salary: net }
+        ? { ...r, total_days: days, total_advances: advances, gross_salary: gross, net_salary: net, carry_forward_out: carryOut }
         : r));
       setEditingId(null);
       showAlert('Record saved!');
@@ -299,7 +306,8 @@ export default function SalaryPage() {
   // ── Derived: current month totals (Overview card — always today's real month) ──
   const curActiveData = useMemo(() => (homeCurrent?.data ?? []).filter(r => r.total_days > 0 || r.total_advances > 0), [homeCurrent]);
   const curGross   = useMemo(() => curActiveData.reduce((s, r) => s + r.gross_salary,   0), [curActiveData]);
-  const curAdvance = useMemo(() => curActiveData.reduce((s, r) => s + r.total_advances, 0), [curActiveData]);
+  // Includes carried-forward over-advance from last month — the full deduction, not just this month's own.
+  const curAdvance = useMemo(() => curActiveData.reduce((s, r) => s + r.total_advances + (r.carried_advance || 0), 0), [curActiveData]);
   // Net = sum of positive net_salary only (over-advance staff pay RM 0, not negative)
   const curNet     = useMemo(() => curActiveData.reduce((s, r) => s + Math.max(0, r.net_salary), 0), [curActiveData]);
 
@@ -347,14 +355,14 @@ export default function SalaryPage() {
       const rows = detailRows as HistoryRecord[];
       return {
         gross:   rows.reduce((s, r) => s + Number(r.gross_salary),   0),
-        advance: rows.reduce((s, r) => s + Number(r.total_advances), 0),
+        advance: rows.reduce((s, r) => s + Number(r.total_advances) + Number(r.carried_advance || 0), 0),
         net:     rows.reduce((s, r) => s + Number(r.net_salary),     0),
       };
     } else {
       const rows = detailRows as CalcRow[];
       return {
         gross:   rows.reduce((s, r) => s + r.gross_salary,   0),
-        advance: rows.reduce((s, r) => s + r.total_advances, 0),
+        advance: rows.reduce((s, r) => s + r.total_advances + (r.carried_advance || 0), 0),
         net:     rows.reduce((s, r) => s + r.net_salary,     0),
       };
     }
@@ -652,7 +660,11 @@ export default function SalaryPage() {
                     const editDays  = isEditing ? parseFloat(editValues.total_days)     || 0 : Number(row.total_days);
                     const editAdv   = isEditing ? parseFloat(editValues.total_advances) || 0 : Number(row.total_advances);
                     const editGross = isEditing ? Math.round(Number(row.daily_rate) * editDays * 100) / 100 : Number(row.gross_salary);
-                    const editNet   = isEditing ? Math.round((editGross - editAdv) * 100) / 100 : Number(row.net_salary);
+                    const carried   = Number(row.carried_advance) || 0;
+                    // Not editing: trust the server-computed, carry-forward-aware net_salary/carry_forward_out.
+                    // Editing: recompute live, still subtracting the carried-forward debt (not user-editable here).
+                    const editNet         = isEditing ? Math.round((editGross - editAdv - carried) * 100) / 100 : Number(row.net_salary);
+                    const editCarryOut    = isEditing ? Math.max(0, Math.round((editAdv + carried - editGross) * 100) / 100) : Number(row.carry_forward_out) || 0;
 
                     return (
                       <tr key={key} style={{ background: selectedPayIds.has(key) ? '#fefce8' : isDone ? '#f0fdf4' : idx % 2 === 0 ? '#fff' : '#f8fafc', borderBottom: '1px solid #f1f5f9' }}>
@@ -692,11 +704,18 @@ export default function SalaryPage() {
                             : editAdv > 0
                               ? <span className="text-danger">({formatRM(editAdv)})</span>
                               : <span className="text-gray-300">-</span>}
+                          {carried > 0 && (
+                            <div className="text-xs font-semibold text-danger mt-0.5">
+                              +{formatRM(carried)} carried
+                            </div>
+                          )}
                         </td>
                         <td className="px-3 py-2.5 text-right font-bold">
                           <div className={editNet < 0 ? 'text-danger' : 'text-accent'}>{formatRM(Math.max(0, editNet))}</div>
-                          {editNet < 0 && (
-                            <div className="text-xs font-semibold text-danger mt-0.5">-{formatRM(Math.abs(editNet))} over</div>
+                          {editCarryOut > 0 && (
+                            <div className="text-xs font-semibold text-danger mt-0.5">
+                              -{formatRM(editCarryOut)} over → next month
+                            </div>
                           )}
                         </td>
                         <td className="px-3 py-2.5 text-xs text-gray-500">
@@ -768,17 +787,19 @@ export default function SalaryPage() {
                           {row.total_advances > 0
                             ? <span className="text-danger">({formatRM(row.total_advances)})</span>
                             : <span className="text-gray-300">-</span>}
+                          {row.carried_advance > 0 && (
+                            <div className="text-xs font-semibold text-danger mt-0.5">
+                              +{formatRM(row.carried_advance)} carried
+                            </div>
+                          )}
                         </td>
                         <td className="px-3 py-2.5 text-right font-bold">
                           <div className="text-accent">{formatRM(row.net_salary)}</div>
-                          {(() => {
-                            const over = Math.round((row.gross_salary - row.total_advances) * 100) / 100;
-                            return over < 0 ? (
-                              <div className="text-xs font-semibold text-danger mt-0.5">
-                                -{formatRM(Math.abs(over))} over
-                              </div>
-                            ) : null;
-                          })()}
+                          {row.carry_forward_out > 0 && (
+                            <div className="text-xs font-semibold text-danger mt-0.5">
+                              -{formatRM(row.carry_forward_out)} over → next month
+                            </div>
+                          )}
                         </td>
                         <td className="px-3 py-2.5 text-xs text-gray-500">
                           {row.bank_name && <div className="font-medium text-gray-700">{row.bank_name}</div>}
