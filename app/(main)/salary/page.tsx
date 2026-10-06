@@ -50,6 +50,10 @@ type SlipRec  = { id: string; payment_slip_url: string | null };
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+// Days = working days excluding OT; Total 工 = Days + OT (8 OT hours = 1 工).
+const workDays = (totalGong: number, otHours: number) =>
+  Math.max(0, Math.round((Number(totalGong) - Number(otHours || 0) / 8) * 1000) / 1000);
+
 export default function SalaryPage() {
   const curMonth = getCurrentMonth();
 
@@ -349,6 +353,15 @@ export default function SalaryPage() {
     }
   }, [section, applied, filterMonth, sortBy, pastHistory, current]);
 
+  // Footer column totals (Days / OT / Total 工 / Site Bonus) — site bonus is informational only.
+  const { footDays, footOt, footGong, footBonus } = useMemo(() => {
+    const rows = detailRows as Array<{ total_days: number | string; total_ot_hours: number | string; total_site_bonus: number | string }>;
+    const gong  = rows.reduce((s, r) => s + Number(r.total_days), 0);
+    const ot    = rows.reduce((s, r) => s + Number(r.total_ot_hours || 0), 0);
+    const bonus = rows.reduce((s, r) => s + Number(r.total_site_bonus || 0), 0);
+    return { footDays: workDays(gong, ot), footOt: ot, footGong: gong, footBonus: bonus };
+  }, [detailRows]);
+
   // ── Summary totals for letterhead ───────────────────────────────────────────
   const summaryTotals = useMemo(() => {
     if (section === 'history') {
@@ -639,8 +652,10 @@ export default function SalaryPage() {
                     {isHistory && <th className="px-3 py-2.5 text-left text-xs text-white font-semibold">Month</th>}
                     <th className="px-3 py-2.5 text-left text-xs text-white font-semibold">Name</th>
                     <th className="px-3 py-2.5 text-right text-xs text-white font-semibold">Rate</th>
-                    <th className="px-3 py-2.5 text-right text-xs text-white font-semibold">Days 工</th>
+                    <th className="px-3 py-2.5 text-right text-xs text-white font-semibold">Days</th>
                     <th className="px-3 py-2.5 text-right text-xs text-white font-semibold">OT</th>
+                    <th className="px-3 py-2.5 text-right text-xs text-white font-semibold">Total 工</th>
+                    <th className="px-3 py-2.5 text-right text-xs text-white font-semibold" title="Paid into the savings account — not part of Gross or Net">Site Bonus</th>
                     <th className="px-3 py-2.5 text-right text-xs text-white font-semibold">Gross</th>
                     <th className="px-3 py-2.5 text-right text-xs text-white font-semibold">Advance</th>
                     <th className="px-3 py-2.5 text-right text-xs text-white font-semibold">Net</th>
@@ -683,6 +698,12 @@ export default function SalaryPage() {
                         <td className="px-3 py-2.5 text-xs text-gray-500 font-mono">{row.month}</td>
                         <td className="px-3 py-2.5 font-medium text-gray-800">{row.employees?.full_name ?? '-'}</td>
                         <td className="px-3 py-2.5 text-right text-gray-600">{formatRM(Number(row.daily_rate))}</td>
+                        <td className="px-3 py-2.5 text-right text-gray-700">{workDays(editDays, Number(row.total_ot_hours)).toFixed(2)}</td>
+                        <td className="px-3 py-2.5 text-right text-orange-500">
+                          {Number(row.total_ot_hours) > 0
+                            ? `+${Number(row.total_ot_hours).toFixed(1)}h`
+                            : <span className="text-gray-300">-</span>}
+                        </td>
                         <td className="px-3 py-2.5 text-right font-semibold text-primary">
                           {isEditing
                             ? <input type="number" step="0.25" min="0" className="w-16 text-right border border-gray-300 rounded px-1 py-0.5 text-xs"
@@ -690,10 +711,8 @@ export default function SalaryPage() {
                                 onChange={e => setEditValues(v => ({ ...v, total_days: e.target.value }))} />
                             : editDays.toFixed(2)}
                         </td>
-                        <td className="px-3 py-2.5 text-right text-gray-600">
-                          {Number(row.total_ot_hours) > 0
-                            ? `+${Number(row.total_ot_hours).toFixed(1)}h`
-                            : <span className="text-gray-300">-</span>}
+                        <td className="px-3 py-2.5 text-right text-green-700">
+                          {Number(row.total_site_bonus) > 0 ? formatRM(Number(row.total_site_bonus)) : <span className="text-gray-300">-</span>}
                         </td>
                         <td className="px-3 py-2.5 text-right text-accent font-semibold">{formatRM(editGross)}</td>
                         <td className="px-3 py-2.5 text-right">
@@ -778,9 +797,13 @@ export default function SalaryPage() {
                       <tr key={key} style={{ background: idx % 2 === 0 ? '#fff' : '#f8fafc', borderBottom: '1px solid #f1f5f9' }}>
                         <td className="px-3 py-2.5 font-medium text-gray-800">{row.full_name}</td>
                         <td className="px-3 py-2.5 text-right text-gray-600">{formatRM(row.daily_rate)}</td>
-                        <td className="px-3 py-2.5 text-right font-semibold text-primary">{row.total_days.toFixed(2)}</td>
+                        <td className="px-3 py-2.5 text-right text-gray-700">{workDays(row.total_days, row.total_ot_hours).toFixed(2)}</td>
                         <td className="px-3 py-2.5 text-right text-orange-500">
                           {row.total_ot_hours > 0 ? `+${row.total_ot_hours.toFixed(1)}h` : <span className="text-gray-300">-</span>}
+                        </td>
+                        <td className="px-3 py-2.5 text-right font-semibold text-primary">{row.total_days.toFixed(2)}</td>
+                        <td className="px-3 py-2.5 text-right text-green-700">
+                          {row.total_site_bonus > 0 ? formatRM(row.total_site_bonus) : <span className="text-gray-300">-</span>}
                         </td>
                         <td className="px-3 py-2.5 text-right text-accent font-semibold">{formatRM(row.gross_salary)}</td>
                         <td className="px-3 py-2.5 text-right">
@@ -836,12 +859,10 @@ export default function SalaryPage() {
                     {isHistory && <td className="px-3 py-2.5 text-xs text-gray-500">TOTAL</td>}
                     <td className="px-3 py-2.5 text-sm text-primary" colSpan={isHistory ? 1 : 2}>TOTAL</td>
                     <td className="px-3 py-2.5" />
-                    <td className="px-3 py-2.5 text-right text-sm text-primary">
-                      {isHistory
-                        ? histRows.reduce((s, r) => s + Number(r.total_days), 0).toFixed(2)
-                        : calcRows.reduce((s, r) => s + r.total_days, 0).toFixed(2)}
-                    </td>
-                    <td className="px-3 py-2.5" />
+                    <td className="px-3 py-2.5 text-right text-sm text-primary">{footDays.toFixed(2)}</td>
+                    <td className="px-3 py-2.5 text-right text-sm text-orange-500">{footOt > 0 ? `+${footOt.toFixed(1)}h` : '-'}</td>
+                    <td className="px-3 py-2.5 text-right text-sm text-primary">{footGong.toFixed(2)}</td>
+                    <td className="px-3 py-2.5 text-right text-sm text-green-700">{footBonus > 0 ? formatRM(footBonus) : '-'}</td>
                     <td className="px-3 py-2.5 text-right text-sm text-accent">{formatRM(summaryTotals.gross)}</td>
                     <td className="px-3 py-2.5 text-right text-sm text-danger">
                       {summaryTotals.advance > 0 ? `(${formatRM(summaryTotals.advance)})` : '-'}

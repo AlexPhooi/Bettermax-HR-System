@@ -52,7 +52,7 @@ export async function GET(req: NextRequest) {
 
   const totalDays    = (attRes.data || []).reduce((s, a) => s + Number(a.days_worked || 0), 0);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const totalPayroll = (attRes.data || []).reduce((s: number, a: any) => s + Number(a.days_worked || 0) * Number(a.employees?.daily_rate || 0) + Number(a.site_bonus || 0), 0);
+  const totalPayroll = (attRes.data || []).reduce((s: number, a: any) => s + Number(a.days_worked || 0) * Number(a.employees?.daily_rate || 0), 0);
 
   // ── Birthday logic ─────────────────────────────────────────────────
   const allEmps = allEmpRes.data || [];
