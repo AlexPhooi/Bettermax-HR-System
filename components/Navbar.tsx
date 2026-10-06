@@ -94,6 +94,9 @@ export default function Navbar() {
   const [binAtt,    setBinAtt]    = useState(0);
   const [binSalary, setBinSalary] = useState(0);
   const bellRef = useRef<HTMLDivElement>(null);
+  // Permit alerts the admin has already opened the bell for. Keyed by employee + expiry date,
+  // so a renewed permit (new date) or a newly-expiring worker raises the badge again.
+  const [seenAlerts, setSeenAlerts] = useState<string[]>([]);
 
   const isAdmin    = role === 'admin' || role === 'owner';
   const isApproval = role === 'approval';
@@ -133,6 +136,10 @@ export default function Navbar() {
   }, [loaded, isAdmin]);
 
   useEffect(() => {
+    try { setSeenAlerts(JSON.parse(localStorage.getItem('bmb_seen_permit_alerts') || '[]')); } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => {
     function handler(e: MouseEvent) {
       if (bellRef.current && !bellRef.current.contains(e.target as Node)) setBellOpen(false);
     }
@@ -150,7 +157,20 @@ export default function Navbar() {
     href === '/operations' ? pathname === '/operations' :
     pathname.startsWith(href);
 
-  const totalAlerts = expiring.length + expired.length;
+  const alertKey = (e: ExpiryItem) => `${e.id}:${e.permit_expire}`;
+  const totalAlerts   = expiring.length + expired.length;
+  const unseenExpired  = expired.filter(e => !seenAlerts.includes(alertKey(e))).length;
+  const unseenAlerts   = unseenExpired + expiring.filter(e => !seenAlerts.includes(alertKey(e))).length;
+
+  function toggleBell() {
+    const opening = !bellOpen;
+    setBellOpen(opening);
+    if (opening && unseenAlerts > 0) {
+      const all = Array.from(new Set([...seenAlerts, ...[...expired, ...expiring].map(alertKey)]));
+      setSeenAlerts(all);
+      try { localStorage.setItem('bmb_seen_permit_alerts', JSON.stringify(all)); } catch { /* ignore */ }
+    }
+  }
 
   return (
     <>
@@ -238,13 +258,13 @@ export default function Navbar() {
 
             {isAdmin && (
               <div className="relative" ref={bellRef}>
-                <button onClick={() => setBellOpen(b => !b)}
+                <button onClick={toggleBell}
                   className="relative p-1.5 rounded" style={{ color: '#C9962E' }}
                   title="Permit expiry alerts">
                   <span className="text-lg leading-none">🔔</span>
-                  {totalAlerts > 0 && (
-                    <span className={`absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full text-[10px] font-bold leading-4 text-center text-white ${expired.length > 0 ? 'bg-red-600' : 'bg-orange-500'}`}>
-                      {totalAlerts}
+                  {unseenAlerts > 0 && (
+                    <span className={`absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full text-[10px] font-bold leading-4 text-center text-white ${unseenExpired > 0 ? 'bg-red-600' : 'bg-orange-500'}`}>
+                      {unseenAlerts}
                     </span>
                   )}
                 </button>
