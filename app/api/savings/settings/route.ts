@@ -3,6 +3,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUser, isManager } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
+import { fetchAll } from '@/lib/fetch-all';
 
 export async function GET(req: NextRequest) {
   const user = await getUser(req);
@@ -25,10 +26,9 @@ export async function GET(req: NextRequest) {
     .single();
 
   // Total savings pool
-  const { data: allRows } = await supabase
-    .from('savings')
-    .select('type, amount');
-  const pool = (allRows || []).reduce((s, r) =>
+  const allRows = await fetchAll<{ type: string; amount: number }>((from, to) =>
+    supabase.from('savings').select('type, amount').order('id').range(from, to));
+  const pool = allRows.reduce((s, r) =>
     r.type === 'credit' ? s + Number(r.amount) : s - Number(r.amount), 0);
 
   return NextResponse.json({

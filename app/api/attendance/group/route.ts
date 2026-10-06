@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUser, isApprover } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
+import { fetchAll } from '@/lib/fetch-all';
 
 export async function PATCH(req: NextRequest) {
   const user = await getUser(req);
@@ -86,16 +87,20 @@ export async function PATCH(req: NextRequest) {
     if (bonusRecs.length > 0) {
       const employeeIds = Array.from(new Set(bonusRecs.map(r => r.employee_id)));
 
-      const [{ data: savRows }, { data: alreadyCredited }] = await Promise.all([
-        supabase.from('savings').select('employee_id, type, amount').in('employee_id', employeeIds),
-        supabase.from('savings').select('reference_id')
-          .in('reference_id', bonusRecs.map(r => r.id)).eq('type_detail', 'mission_bonus'),
+      // Paginated: several workers' full ledgers exceed PostgREST's 1,000-row cap, and a
+      // truncated read here would write a too-low balance back to employees.site_bonus_balance.
+      const [savRows, alreadyCredited] = await Promise.all([
+        fetchAll<{ employee_id: string; type: string; amount: number }>((from, to) =>
+          supabase.from('savings').select('employee_id, type, amount').in('employee_id', employeeIds).order('id').range(from, to)),
+        fetchAll<{ reference_id: string }>((from, to) =>
+          supabase.from('savings').select('reference_id')
+            .in('reference_id', bonusRecs.map(r => r.id)).eq('type_detail', 'mission_bonus').order('id').range(from, to)),
       ]);
 
-      const creditedIds = new Set((alreadyCredited || []).map(r => r.reference_id));
+      const creditedIds = new Set(alreadyCredited.map(r => r.reference_id));
       const balances = new Map<string, number>();
       for (const empId of employeeIds) {
-        const bal = (savRows || [])
+        const bal = savRows
           .filter(r => r.employee_id === empId)
           .reduce((s, r) => r.type === 'credit' ? s + Number(r.amount) : s - Number(r.amount), 0);
         balances.set(empId, bal);

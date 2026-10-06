@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUser, isManager } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
+import { fetchAll } from '@/lib/fetch-all';
 
 export async function GET(req: NextRequest) {
   const user = await getUser(req);
@@ -23,13 +24,20 @@ export async function GET(req: NextRequest) {
   const { data: employees, error: empErr } = await empQ;
   if (empErr) return NextResponse.json({ error: empErr.message }, { status: 500 });
 
-  // Fetch all savings rows
-  let savQ = supabase
-    .from('savings')
-    .select('employee_id, type, type_detail, amount, balance_after, created_at, month');
-  if (empIdFilter) savQ = savQ.eq('employee_id', empIdFilter);
-  const { data: rows } = await savQ;
-  const savings = rows || [];
+  // Fetch all savings rows — paginated: the ledger is far larger than PostgREST's 1,000-row cap
+  type SavRow = { employee_id: string; type: string; type_detail: string; amount: number; balance_after: number; created_at: string; month: string };
+  let savings: SavRow[];
+  try {
+    savings = await fetchAll<SavRow>((from, to) => {
+      let q = supabase.from('savings')
+        .select('employee_id, type, type_detail, amount, balance_after, created_at, month')
+        .order('id');
+      if (empIdFilter) q = q.eq('employee_id', empIdFilter);
+      return q.range(from, to);
+    });
+  } catch (e) {
+    return NextResponse.json({ error: (e as Error).message }, { status: 500 });
+  }
 
   // Build per-employee summary
   const summary = (employees || []).map(emp => {
