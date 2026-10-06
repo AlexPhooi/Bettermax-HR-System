@@ -856,9 +856,10 @@ export default function SalaryPage() {
                 {/* Totals footer */}
                 <tfoot>
                   <tr style={{ background: '#f0f4f8', borderTop: '2px solid #cbd5e1', fontWeight: 700 }}>
-                    {isHistory && <td className="px-3 py-2.5 text-xs text-gray-500">TOTAL</td>}
-                    <td className="px-3 py-2.5 text-sm text-primary" colSpan={isHistory ? 1 : 2}>TOTAL</td>
-                    <td className="px-3 py-2.5" />
+                    {isHistory && <td className="px-3 py-2.5 no-print" />}{/* checkbox */}
+                    {isHistory && <td className="px-3 py-2.5" />}{/* month */}
+                    <td className="px-3 py-2.5 text-sm text-primary">TOTAL</td>{/* name */}
+                    <td className="px-3 py-2.5" />{/* rate */}
                     <td className="px-3 py-2.5 text-right text-sm text-primary">{footDays.toFixed(2)}</td>
                     <td className="px-3 py-2.5 text-right text-sm text-orange-500">{footOt > 0 ? `+${footOt.toFixed(1)}h` : '-'}</td>
                     <td className="px-3 py-2.5 text-right text-sm text-primary">{footGong.toFixed(2)}</td>
