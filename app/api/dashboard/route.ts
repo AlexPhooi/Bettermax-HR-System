@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUser } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
+import { ymd } from '@/lib/utils';
 
 export async function GET(req: NextRequest) {
   const user = await getUser(req);
@@ -9,7 +10,7 @@ export async function GET(req: NextRequest) {
   const now = new Date();
   const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   const start = `${month}-01`;
-  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+  const end = ymd(now.getFullYear(), now.getMonth() + 1, 0);
   const today = now.toISOString().split('T')[0];
   const in60 = new Date(now.getTime() + 60 * 86400000).toISOString().split('T')[0];
   const currentMonthNum = now.getMonth() + 1; // 1-12

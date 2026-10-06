@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getUser } from '@/lib/auth';
+import { getUser, isManager } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 
 const RANK_RATES: Record<string, number> = {
@@ -30,6 +30,7 @@ export async function GET(req: NextRequest) {
   let query = supabase.from('employees').select('*')
     .is('deleted_at', null)   // ← exclude soft-deleted
     .order('full_name');
+  if (!isManager(user.role)) query = query.eq('is_demo', false);   // hide test accounts from non-managers
   const search = searchParams.get('search');
   const status = searchParams.get('status');
   if (search) query = query.ilike('full_name', `%${search}%`);

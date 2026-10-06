@@ -1,3 +1,9 @@
+// Builds a YYYY-MM-DD date string from UTC calendar fields, avoiding the
+// local-timezone round-trip of `new Date(y, m, d).toISOString()`.
+export function ymd(year: number, month: number, day: number) {
+  return new Date(Date.UTC(year, month, day)).toISOString().split('T')[0];
+}
+
 export function formatRM(n: number | string | null | undefined) {
   return 'RM\u00a0' + Number(n || 0).toLocaleString('en-MY', {
     minimumFractionDigits: 2, maximumFractionDigits: 2

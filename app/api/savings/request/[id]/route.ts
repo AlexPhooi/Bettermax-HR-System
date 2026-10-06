@@ -12,6 +12,15 @@ const REASON_LABEL: Record<string, string> = {
   others:    'Withdrawal',
 };
 
+// savings_requests.reason uses short codes; savings.type_detail requires the
+// canonical names enforced by the DB check constraint — map between them.
+const REASON_TO_TYPE_DETAIL: Record<string, string> = {
+  permit:    'permit_renewal',
+  flight:    'flight_home',
+  emergency: 'emergency_withdrawal',
+  others:    'other',
+};
+
 export async function PATCH(
   req: NextRequest,
   { params }: { params: { id: string } }
@@ -72,7 +81,7 @@ export async function PATCH(
   const { error: debitErr } = await supabase.from('savings').insert({
     employee_id:   request.employee_id,
     type:          'debit',
-    type_detail:   request.reason,
+    type_detail:   REASON_TO_TYPE_DETAIL[request.reason] ?? 'other',
     amount:        Number(request.amount),
     balance_after: balanceAfter,
     reason:        label,

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUser, isManager } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
+import { ymd } from '@/lib/utils';
 
 // POST /api/salary/recalculate  { month: "2026-05" }
 // Re-reads approved attendance + advances and updates existing salary_records.
@@ -15,7 +16,7 @@ export async function POST(req: NextRequest) {
 
   const [y, m] = month.split('-');
   const start = `${month}-01`;
-  const end   = new Date(+y, +m, 0).toISOString().split('T')[0];
+  const end   = ymd(+y, +m, 0);
 
   // Fetch existing salary records for this month (all statuses — allow recalc on history too)
   const { data: existing, error: srErr } = await supabase
@@ -49,7 +50,8 @@ export async function POST(req: NextRequest) {
     const total_site_bonus = Math.round(att.reduce((s, a) => s + Number(a.site_bonus || 0), 0) * 100) / 100;
     const total_ot_hours   = Math.round(att.reduce((s, a) => s + Number(a.ot_hours   || 0), 0) * 100) / 100;
     const base_salary      = Math.round(total_days * Number(rec.daily_rate) * 100) / 100;
-    const gross_salary     = Math.round((base_salary + total_site_bonus) * 100) / 100;
+    // Site bonus goes to the savings ledger on approval, not into salary — see /api/salary/calculate.
+    const gross_salary     = base_salary;
     const total_advances   = Math.round(adv.reduce((s, a) => s + Number(a.amount || 0), 0) * 100) / 100;
     const net_salary       = Math.max(0, Math.round((gross_salary - total_advances) * 100) / 100);
 

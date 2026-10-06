@@ -124,7 +124,7 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
       const balanceAfter = Math.round((currentBal - bonus) * 100) / 100;
 
       // Insert reversal debit
-      await supabase.from('savings').insert({
+      const { error: reversalErr } = await supabase.from('savings').insert({
         employee_id:   rec.employee_id,
         type:          'debit',
         type_detail:   'mission_bonus_reversal',
@@ -136,10 +136,13 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
         created_by:    user.id,
       });
 
-      // Sync employees.site_bonus_balance
-      await supabase.from('employees')
-        .update({ site_bonus_balance: Math.max(0, balanceAfter) })
-        .eq('id', rec.employee_id);
+      // Only sync the balance if the reversal actually landed in the ledger —
+      // otherwise employees.site_bonus_balance would drift out of sync with savings.
+      if (!reversalErr) {
+        await supabase.from('employees')
+          .update({ site_bonus_balance: Math.max(0, balanceAfter) })
+          .eq('id', rec.employee_id);
+      }
     }
   }
 

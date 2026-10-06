@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUser, isManager } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
+import { ymd } from '@/lib/utils';
 
 function getPaymentDue(month: string) {
   const [y, m] = month.split('-');
-  return new Date(+y, +m, 7).toISOString().split('T')[0];
+  return ymd(+y, +m, 7);
 }
 
 export async function GET(req: NextRequest) {
@@ -15,7 +16,7 @@ export async function GET(req: NextRequest) {
   if (!month) return NextResponse.json({ error: 'Month required.' }, { status: 400 });
   const [y, m] = month.split('-');
   const start = `${month}-01`;
-  const end = new Date(+y, +m, 0).toISOString().split('T')[0];
+  const end = ymd(+y, +m, 0);
 
   const [empRes, attRes, advRes] = await Promise.all([
     supabase.from('employees').select('id, full_name, daily_rate, rank, status, bank_name, bank_account, site_bonus_balance').eq('status', 'active').eq('is_demo', false),
@@ -30,7 +31,10 @@ export async function GET(req: NextRequest) {
     const total_ot_hours   = att.reduce((s, a) => s + Number(a.ot_hours    || 0), 0);
     const total_site_bonus = Math.round(att.reduce((s, a) => s + Number(a.site_bonus || 0), 0) * 100) / 100;
     const base_salary      = Math.round(total_days * Number(emp.daily_rate) * 100) / 100;
-    const gross_salary     = Math.round((base_salary + total_site_bonus) * 100) / 100;
+    // Site bonus is credited straight into the savings ledger when attendance is approved
+    // (see /api/attendance/group and /api/attendance) — it must NOT also be paid out in
+    // salary, or the worker gets it twice. gross_salary is base pay only.
+    const gross_salary     = base_salary;
     const advs             = (advRes.data || []).filter(a => a.employee_id === emp.id);
     const total_advances   = Math.round(advs.reduce((s, a) => s + Number(a.amount || 0), 0) * 100) / 100;
     const site_bonus_balance = Number(emp.site_bonus_balance || 0);

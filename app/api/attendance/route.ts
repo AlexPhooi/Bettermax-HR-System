@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUser } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
-import { calcHoursAndDays } from '@/lib/utils';
+import { calcHoursAndDays, ymd } from '@/lib/utils';
 import { calcHoursFromTimes, DEFAULT_SCHEDULE } from '@/lib/work-schedule';
 
 export async function GET(req: NextRequest) {
@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
   } else if (month) {
     const [y, m] = month.split('-');
     query = query.gte('work_date', `${month}-01`)
-      .lte('work_date', new Date(+y, +m, 0).toISOString().split('T')[0]);
+      .lte('work_date', ymd(+y, +m, 0));
   }
 
   // Optional status filter
@@ -140,14 +140,16 @@ export async function POST(req: NextRequest) {
 
   // Detect rework
   let is_rework = false;
+  let projectName = 'Site';
   if (body.project_id) {
-    const { data: proj } = await supabase.from('projects').select('status').eq('id', body.project_id).single();
+    const { data: proj } = await supabase.from('projects').select('status, name, code').eq('id', body.project_id).single();
     if (proj?.status === 'completed') {
       is_rework = true;
       if (!body.notes?.trim()) {
         return NextResponse.json({ error: 'Rework remark required for completed projects.' }, { status: 400 });
       }
     }
+    projectName = proj?.name || proj?.code || 'Site';
   }
 
   // Managers can set status directly (e.g. 'approved' for manual entry)
@@ -187,7 +189,33 @@ export async function POST(req: NextRequest) {
     if (error) {
       if (error.code === '23505') skipped.push(employee_id);
       else return NextResponse.json({ error: error.message }, { status: 500 });
-    } else inserted.push(data);
+      continue;
+    }
+    inserted.push(data);
+
+    // Manual entries created directly as 'approved' (e.g. adding a missed worker to an
+    // already-approved group) bypass the group-approve endpoint, so credit the savings
+    // ledger here too — otherwise the bonus shows on the attendance record but never
+    // reaches the worker's savings balance.
+    if (recordStatus === 'approved' && site_bonus > 0) {
+      const { data: savRows } = await supabase.from('savings').select('type, amount').eq('employee_id', employee_id);
+      const balance = (savRows || []).reduce((s, r) => r.type === 'credit' ? s + Number(r.amount) : s - Number(r.amount), 0);
+      const balanceAfter = Math.round((balance + site_bonus) * 100) / 100;
+      const { error: credErr } = await supabase.from('savings').upsert({
+        employee_id,
+        type:          'credit',
+        type_detail:   'mission_bonus',
+        amount:        site_bonus,
+        balance_after: balanceAfter,
+        reason:        `Site bonus — ${projectName} (${body.work_date})`,
+        reference_id:  data.id,
+        month:         new Date().toISOString().slice(0, 7),
+        created_by:    user.id,
+      }, { onConflict: 'reference_id,type_detail', ignoreDuplicates: true });
+      if (!credErr) {
+        await supabase.from('employees').update({ site_bonus_balance: balanceAfter }).eq('id', employee_id);
+      }
+    }
   }
   return NextResponse.json({ inserted, skipped });
 }

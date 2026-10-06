@@ -136,7 +136,10 @@ export async function PATCH(req: NextRequest) {
 
       if (newSavings.length > 0) {
         await Promise.all([
-          supabase.from('savings').insert(newSavings),
+          // ignoreDuplicates guards against the race where two overlapping approve
+          // requests both pass the creditedIds check before either insert lands —
+          // the DB unique constraint on (reference_id, type_detail) is the real backstop.
+          supabase.from('savings').upsert(newSavings, { onConflict: 'reference_id,type_detail', ignoreDuplicates: true }),
           // Keep employees.site_bonus_balance in sync — one update per employee, in parallel
           ...Array.from(balances.entries()).map(([empId, bal]) =>
             supabase.from('employees').update({ site_bonus_balance: bal }).eq('id', empId)
