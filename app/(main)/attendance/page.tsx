@@ -3,6 +3,7 @@ import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { formatDate, formatRM, getCurrentMonth } from '@/lib/utils';
 import { useRole } from '@/lib/role-context';
 import { calcHoursFromTimes, DEFAULT_SCHEDULE, WorkSchedule } from '@/lib/work-schedule';
+import QuickAttendance from './QuickAttendance';
 
 // ── Types ─────────────────────────────────────────────────────────────
 interface WorkerRow { employee_id: string; full_name: string; check_in_time: string; check_out_time: string; }
@@ -2109,11 +2110,26 @@ function AdminView() {
 // ══════════════════════════════════════════════════════════════════════
 // ROOT
 // ══════════════════════════════════════════════════════════════════════
+// Editors get the new one-tap flow only if their username is listed in
+// app_settings.quick_attendance_usernames (a JSON array). Everyone else keeps the current screens.
+function EditorEntry() {
+  const { username } = useRole();
+  const [quick, setQuick] = useState<boolean | null>(null);
+  useEffect(() => {
+    fetch('/api/settings/app').then(r => r.json()).then(s => {
+      try { setQuick((JSON.parse(s.quick_attendance_usernames || '[]') as string[]).includes(username)); }
+      catch { setQuick(false); }
+    }).catch(() => setQuick(false));
+  }, [username]);
+  if (quick === null) return <div className="p-8 text-center text-gray-400">Loading…</div>;
+  return quick ? <QuickAttendance /> : <LeaderView />;
+}
+
 export default function AttendancePage() {
   const { role, loaded } = useRole();
   if (!loaded) return <div className="p-8 text-center text-gray-400">Loading…</div>;
   if (role === 'viewer') return <WorkerView />;
-  if (role === 'editor') return <LeaderView />;
+  if (role === 'editor') return <EditorEntry />;
   // approval, admin, owner all see the full admin view
   return <AdminView />;
 }

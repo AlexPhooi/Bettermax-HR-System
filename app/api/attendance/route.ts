@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUser } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
+import { photoTakenAtMs, mytTime, roundCheckIn } from '@/lib/photo-time';
 import { calcHoursAndDays, ymd } from '@/lib/utils';
 import { calcHoursFromTimes, DEFAULT_SCHEDULE } from '@/lib/work-schedule';
 
@@ -82,6 +83,10 @@ export async function POST(req: NextRequest) {
 
   if (isDraft) {
     // Morning check-in: just project, date, workers, check-in photo
+    // One-tap flow: the check-in time is taken from the photo's upload time (server-side, so it
+    // can't be typed in), in Malaysia time, rounded to the nearest quarter hour.
+    const photoMs = body.auto_time ? photoTakenAtMs(body.check_in_photo_url) : null;
+    const autoCheckIn = photoMs ? roundCheckIn(mytTime(photoMs)) : null;
     const inserted: unknown[] = [];
     const skipped: string[] = [];
     for (const employee_id of ids) {
@@ -89,6 +94,7 @@ export async function POST(req: NextRequest) {
         employee_id,
         project_id:        body.project_id || null,
         work_date:         body.work_date,
+        check_in_time:     autoCheckIn,
         hours_worked:      0,
         days_worked:       0,
         ot_hours:          0,

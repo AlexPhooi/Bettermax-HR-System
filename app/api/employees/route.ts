@@ -30,7 +30,16 @@ export async function GET(req: NextRequest) {
   let query = supabase.from('employees').select('*')
     .is('deleted_at', null)   // ← exclude soft-deleted
     .order('full_name');
-  if (!isManager(user.role)) query = query.eq('is_demo', false);   // hide test accounts from non-managers
+  if (!isManager(user.role)) {
+    // Real accounts never see test staff; a test (demo) account only sees other test staff,
+    // so trying out a new flow can't create attendance for real workers.
+    let demoUser = false;
+    if (user.employee_id) {
+      const { data: me } = await supabase.from('employees').select('is_demo').eq('id', user.employee_id).single();
+      demoUser = !!me?.is_demo;
+    }
+    query = query.eq('is_demo', demoUser);
+  }
   const search = searchParams.get('search');
   const status = searchParams.get('status');
   if (search) query = query.ilike('full_name', `%${search}%`);

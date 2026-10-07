@@ -108,5 +108,5 @@ export async function POST(req: NextRequest) {
     await supabase.from('hr_attendance').update({ photo_url: publicUrl }).eq('id', record_id);
   }
 
-  return NextResponse.json({ url: publicUrl, thumb_url: thumbUrl });
+  return NextResponse.json({ url: publicUrl, thumb_url: thumbUrl, taken_at: ts });
 }
